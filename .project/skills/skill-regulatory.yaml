@@ -1,0 +1,162 @@
+skill:
+  id: flair-regulatory
+  version: "1.0"
+  name: "Regulatory — NIS2, DORA & GDPR"
+  description: >
+    Maps NIS2, DORA and GDPR requirements to FLAIR features and acceptance criteria.
+    Enables the Security Agent to verify regulatory coverage of every US.
+    FLAIR itself is a tool that helps organisations demonstrate compliance —
+    it must also be compliant internally.
+  applies_to:
+    - flair-core
+    - flair-agent
+    - flair-ui
+  loaded_by:
+    - Regulatory_Expert
+    - Security_Agent
+    - PO_Agent
+
+---
+
+nis2:
+
+  relevant_articles:
+    art_21_2_a: |
+      Risk analysis and information system security policies.
+      FLAIR contribution: automated flow map = evidence of network risk analysis.
+      Required AC on US touching flow mapping:
+        "Given flow map export, when requested by auditor, then JSON/PDF export
+         contains all services, flows, protocols and encryption status."
+
+    art_21_2_e: |
+      Security in network and information systems acquisition, development and maintenance.
+      FLAIR internal compliance: all FLAIR code must pass Gate 3 security checks
+      (CodeQL, Semgrep OWASP rules) before merge.
+      gate_impact: "Gate 3 hard block if security rating drops below A on SonarCloud"
+
+    art_21_2_g: |
+      Cryptography and encryption policies.
+      FLAIR contribution: real-time detection of unencrypted flows and deprecated TLS.
+      Required AC on scoring US:
+        "Given flow using TLS 1.0 or 1.1, when scored, then score < 30 and
+         alert severity = CRITICAL with reference to NIS2 Art 21.2.g"
+
+    art_21_2_h: |
+      Human resources security, access control and asset management.
+      FLAIR contribution: audit logs for every user action on flair-ui and API.
+      Required AC on all authentication US:
+        "Given any authenticated action, when executed, then audit_logs entry
+         contains actor, action, resource, outcome, timestamp."
+
+  audit_evidence:
+    what_flair_produces:
+      - "Flow map export (JSON/PDF) — evidence of network topology mapping"
+      - "Unencrypted flow alerts — evidence of continuous monitoring"
+      - "Audit logs — evidence of access control monitoring"
+      - "Agent enrollment records — evidence of asset inventory"
+    export_endpoint: "GET /api/v1/export/nis2-evidence — produces structured ZIP"
+
+---
+
+dora:
+
+  relevant_articles:
+    art_9_ict_risk: |
+      ICT risk management framework.
+      FLAIR contribution: flow map with security scoring = ICT risk visualisation.
+      Required feature: risk score trend over time (is the score improving or degrading?)
+
+    art_10_ict_incidents: |
+      ICT-related incident detection and response.
+      FLAIR contribution: real-time alerts on unencrypted cross-zone flows.
+      Required AC on alert US:
+        "Given critical alert triggered, when webhook fires, then payload contains
+         incident_type, affected_service, first_detected_at, severity."
+
+    art_11_business_continuity: |
+      Digital operational resilience testing.
+      FLAIR internal: flair-core must have readiness probe (/readyz) and
+      documented RTO/RPO in ops runbook.
+
+    art_28_third_party: |
+      ICT third-party risk management.
+      FLAIR contribution: flag flows to/from external IPs not in known service list.
+      Required feature (phase 3): external dependency map with TLS status.
+
+  financial_sector_note: >
+    DORA applies to financial entities and their critical ICT providers.
+    If FLAIR is deployed in a financial sector context, the flow retention
+    period must be configurable to minimum 5 years for DORA compliance.
+    This is already configurable via the admin UI — document in deployment guide.
+
+---
+
+gdpr:
+
+  flow_data_classification:
+    ip_addresses: "Personal data under GDPR — IP addresses can identify individuals"
+    src_process: "May be personal data if it identifies a user's application"
+    implications:
+      - "Flow data must not be retained beyond configured retention period"
+      - "Retention period must be documented and justified"
+      - "Data subjects may request deletion — retention policy in UI must honour this"
+      - "Data minimisation: only collect fields necessary for security analysis"
+
+  required_ac_on_retention_us: |
+    AC-{id}-GDPR-01:
+      Given: admin configures retention to 30 days
+      When: 31 days have passed since flow capture
+      Then: flow is no longer accessible via API and deleted from DB
+      Test: TestRetentionPolicy_AC{id}_GDPR01_DeletesExpiredFlows
+
+    AC-{id}-GDPR-02:
+      Given: data subject deletion request
+      When: DELETE /api/v1/flows?src_ip={ip} is called by admin
+      Then: all flows with that src_ip are soft-deleted within 24 hours
+      Test: TestDataDeletion_AC{id}_GDPR02_DeletesByIP
+
+  lawful_basis: >
+    FLAIR processes flow data under legitimate interest (Art. 6.1.f GDPR):
+    detecting unencrypted network flows is a security necessity.
+    This must be documented in the organisation's ROPA (Record of Processing Activities).
+    FLAIR does not maintain a ROPA — the deploying organisation does.
+
+  dpa_requirement: >
+    Organisations deploying FLAIR must sign a DPA (Data Processing Agreement)
+    if FLAIR processes personal data on their behalf.
+    For self-hosted deployments, the organisation is both controller and processor.
+
+---
+
+ac_challenge_regulatory:
+
+  protocol: >
+    The Regulatory Expert runs this check on every US that touches flow data,
+    retention, alerts, exports or audit logs.
+
+  questions:
+    q1: |
+      Does this US create or modify flow data retention?
+      If yes: is there an AC verifying the retention period is configurable via UI?
+      Is there an AC for deletion of data beyond retention period?
+
+    q2: |
+      Does this US produce audit log entries?
+      If yes: do the audit log entries contain actor, action, resource, outcome, timestamp?
+      Are audit logs append-only (no UPDATE or DELETE)?
+
+    q3: |
+      Does this US expose flow data via API or export?
+      If yes: is authentication required? Is there an AC for unauthorised access returning 401?
+      Does the export include enough information to serve as NIS2/DORA audit evidence?
+
+    q4: |
+      Does this US handle personal data (IP addresses, usernames, process names)?
+      If yes: is data minimisation applied (only fields necessary for security analysis)?
+      Is there a mechanism for data subject deletion?
+
+  scoring: |
+    Regulatory AC completeness (contributes to Gate 1, weight 10):
+    - 4/4 questions with AC present: +10
+    - 2-3/4: +5
+    - 0-1/4: +0 (US flagged — Regulatory Expert adds missing AC before dispatch)

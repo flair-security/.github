@@ -169,18 +169,39 @@ This is what every agent — regardless of OS — sends to `flair-core`, batched
 
 ```go
 type Flow struct {
-    SrcIP       string
-    SrcPort     int
-    DstIP       string
-    DstPort     int
-    Protocol    string            // "HTTP/1.1", "gRPC", "SQL", "AMQP", "Redis", ...
-    TLSVersion  string            // "TLS1.3", "TLS1.2", "" (none)
-    Encrypted   bool
+    // Identity
+    AgentID    string            // unique identifier of the emitting agent
+
+    // Network
+    SrcIP      string
+    SrcPort    int
+    DstIP      string
+    DstPort    int
+    Direction  string            // "outbound" | "inbound" | "internal"
+
+    // Application protocol
+    Protocol   string            // "HTTP/1.1", "gRPC", "SQL", "AMQP", "Redis", ...
+
+    // Encryption
+    TLSVersion     string        // "TLS1.3", "TLS1.2", "" (none)
+    TLSCipherSuite string        // e.g. "TLS_AES_256_GCM_SHA384" — empty if unencrypted
+    JA3Hash        string        // TLS client fingerprint — empty if unencrypted
+    Encrypted      bool
+
+    // Source process
     SrcProcess  string
     SrcPID      int
+    ContainerID string            // optional — enriched by flair-agent-k8s
+
+    // Metrics
+    BytesTransferred int64
+
+    // Time
     Timestamp   time.Time
-    Metadata    map[string]string // extensible: "environment", "owner",
-                                   // "app_id", "criticality" — populated
+
+    // Extensible metadata
+    Metadata    map[string]string // "environment", "owner", "app_id",
+                                   // "criticality", "zone" — populated
                                    // manually or via CMDB enrichment
 }
 ```

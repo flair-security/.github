@@ -1,0 +1,203 @@
+skill:
+  id: flair-api-design
+  version: "1.0"
+  name: "REST API Design"
+  description: >
+    Defines REST API conventions for flair-core.
+    Covers URL structure, HTTP methods, status codes, pagination, error format,
+    versioning, and webhook payloads. Loaded by Go Software Architect and Dev Agent
+    for any flair-core API work.
+  applies_to:
+    - flair-core
+  loaded_by:
+    - Go_Software_Architect
+    - Dev_Agent
+
+---
+
+url_conventions:
+
+  rules:
+    - "Plural nouns for collections: /flows, /agents, /alerts"
+    - "Kebab-case: /cross-zone-flows not /crossZoneFlows"
+    - "Nested resources max 2 levels deep: /agents/{id}/flows — not /agents/{id}/flows/{fid}/scores"
+    - "No verbs in URL — use HTTP method to express action"
+    - "Version prefix on all routes: /api/v1/"
+
+  examples:
+    correct:
+      - "GET    /api/v1/flows"
+      - "GET    /api/v1/flows/{id}"
+      - "POST   /api/v1/flows"
+      - "DELETE /api/v1/flows/{id}"
+      - "GET    /api/v1/agents/{agent_id}/flows"
+      - "POST   /api/v1/agents/{agent_id}/enroll"
+    wrong:
+      - "GET /api/v1/getFlows         ← verb in URL"
+      - "GET /api/v1/flow             ← singular collection"
+      - "GET /api/v1/flows/getByAgent ← verb in path"
+
+---
+
+http_methods:
+
+  mapping:
+    GET:    "Read — idempotent, no body, cacheable"
+    POST:   "Create or non-idempotent action (enroll, ingest)"
+    PUT:    "Full replace — idempotent"
+    PATCH:  "Partial update — idempotent"
+    DELETE: "Remove — idempotent"
+
+  rules:
+    - "GET never mutates state"
+    - "POST /flows for ingest — returns 201 Created with Location header"
+    - "POST /agents/{id}/enroll — action, not a resource creation"
+    - "DELETE returns 204 No Content — no body"
+
+---
+
+status_codes:
+
+  table:
+    200: "OK — successful GET, PATCH, PUT"
+    201: "Created — successful POST creating a resource"
+    204: "No Content — successful DELETE or action with no response body"
+    400: "Bad Request — validation failed, malformed JSON"
+    401: "Unauthorized — missing or invalid token"
+    403: "Forbidden — valid token, insufficient permissions"
+    404: "Not Found — resource does not exist"
+    409: "Conflict — duplicate, score conflict, version mismatch"
+    422: "Unprocessable Entity — syntactically valid but semantically rejected"
+    429: "Too Many Requests — rate limit hit"
+    500: "Internal Server Error — never expose stack trace or internal message"
+    503: "Service Unavailable — DB or dependency down"
+
+  rules:
+    - "Never return 200 with an error body"
+    - "Never return 500 for client errors"
+    - "401 vs 403: 401 means unauthenticated, 403 means authenticated but not allowed"
+
+---
+
+error_format:
+
+  rule: "All errors follow a consistent JSON envelope — never return plain strings"
+  schema: |
+    {
+      "error": {
+        "code":    "validation_error",        // machine-readable snake_case
+        "message": "field 'src_ip' is required",  // human-readable
+        "details": [                           // optional — for validation errors
+          { "field": "src_ip", "issue": "required" }
+        ],
+        "request_id": "550e8400-e29b-41d4..."  // always present — from middleware
+      }
+    }
+
+  error_codes:
+    - "not_found"
+    - "validation_error"
+    - "unauthorized"
+    - "forbidden"
+    - "conflict"
+    - "internal_error"
+    - "service_unavailable"
+    - "rate_limit_exceeded"
+
+  rule_request_id: "Every request gets a UUID request_id injected by middleware — present in all responses and all log lines"
+
+---
+
+pagination:
+
+  rule: "All list endpoints support cursor-based pagination — no offset/limit pagination on large tables"
+  query_params:
+    - "limit: int, max 100, default 50"
+    - "cursor: opaque string (base64-encoded last-seen ID + timestamp)"
+    - "sort: field name, default created_at"
+    - "order: asc | desc, default desc"
+
+  response_envelope: |
+    {
+      "data": [ ... ],
+      "pagination": {
+        "cursor":      "eyJpZCI6Ij...",  // next page cursor — absent if last page
+        "has_more":    true,
+        "total_count": 1247              // optional — only if cheap to compute
+      }
+    }
+
+  rule_no_offset: >
+    Never use OFFSET on the flows table — table grows unbounded.
+    Cursor pagination uses WHERE id < $cursor ORDER BY id DESC LIMIT $n.
+
+---
+
+versioning:
+
+  rule: "API version in URL prefix: /api/v1/, /api/v2/"
+  policy:
+    - "v1 → v2 only for breaking changes (removed field, changed semantics)"
+    - "New optional fields: additive, no version bump"
+    - "Removed fields or changed types: new version required"
+    - "v1 supported for minimum 6 months after v2 launch"
+  header: "Deprecation: Sat, 31 Dec 2026 00:00:00 GMT — set on deprecated endpoints"
+
+---
+
+request_validation:
+
+  rule: "Validate at the handler boundary before calling any service"
+  required_checks:
+    - "Required fields present and non-empty"
+    - "IP addresses valid format"
+    - "Timestamps parseable as RFC 3339"
+    - "agent_id matches enrolled agent from token claims"
+    - "Payload size ≤ 1 MB — reject with 400 above"
+
+  pattern: |
+    func validateIngestRequest(req IngestFlowRequest) error {
+        if req.AgentID == "" {
+            return &domain.ValidationError{Field: "agent_id", Message: "required"}
+        }
+        if net.ParseIP(req.SrcIP) == nil {
+            return &domain.ValidationError{Field: "src_ip", Message: "invalid IP address"}
+        }
+        return nil
+    }
+
+---
+
+webhooks:
+
+  rule: "Webhooks use POST with a consistent envelope and HMAC-SHA256 signature"
+  envelope: |
+    {
+      "event":      "flow.alert_triggered",   // dot-notation: resource.action
+      "occurred_at": "2026-01-15T14:32:01Z",  // RFC 3339 UTC
+      "payload":    { ... }                   // event-specific data
+    }
+
+  signature:
+    header: "X-Flair-Signature: sha256=<hex>"
+    rule: "Consumers must verify signature before processing — SDKs provide helpers"
+
+  events:
+    - "flow.ingested"
+    - "flow.alert_triggered"
+    - "agent.enrolled"
+    - "agent.disconnected"
+    - "score.updated"
+
+---
+
+openapi:
+
+  rule: "Every endpoint documented in openapi.yaml (swaggo annotations on handlers)"
+  required_fields:
+    - "Summary and description"
+    - "All path and query parameters with types and constraints"
+    - "Request body schema with required fields marked"
+    - "All response codes with example bodies"
+    - "Security scheme (BearerAuth)"
+  gate_impact: "Gate 4 blocks if new endpoint has no OpenAPI annotation"

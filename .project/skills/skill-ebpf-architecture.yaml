@@ -1,0 +1,225 @@
+skill:
+  id: flair-ebpf-architecture
+  version: "1.0"
+  name: "eBPF Architecture & Kernel Constraints"
+  description: >
+    Governs all eBPF program design, kernel interaction, capability management,
+    and agent architecture for flair-agent. Loaded by eBPF/Linux Kernel Expert
+    and Dev Agent for any task touching packet capture, protocol detection,
+    or the Collector interface.
+  applies_to:
+    - flair-agent
+    - flair-agent-k8s
+  loaded_by:
+    - eBPF_Linux_Kernel_Expert
+    - Dev_Agent
+
+---
+
+architecture:
+
+  collector_interface:
+    rule: >
+      The eBPF program is an implementation detail behind the Collector interface.
+      No code outside the collector package imports cilium/ebpf or libbpf directly.
+    definition: |
+      type Collector interface {
+          Start(ctx context.Context) error
+          Flows() <-chan domain.Flow
+          Close() error
+      }
+    implementations:
+      - "ebpf.EBPFCollector  — Linux, kernel >= 4.18"
+      - "etw.ETWCollector    — Windows (flair-agent-windows)"
+      - "pcap.PcapCollector  — Fallback, no process attribution"
+    factory: |
+      // Platform detection at startup — never at call site
+      func NewCollector(cfg Config) (Collector, error) {
+          switch runtime.GOOS {
+          case "linux":
+              return ebpf.New(cfg.EBPF)
+          default:
+              return nil, fmt.Errorf("platform %s: use flair-agent-windows", runtime.GOOS)
+          }
+      }
+
+  agent_constraints:
+    binary_size: "< 20 MB — enforced by Gate 3"
+    idle_cpu: "< 0.5% on a single core — measured in CI benchmark"
+    memory: "< 50 MB RSS at idle"
+    capabilities:
+      required:
+        - CAP_NET_ADMIN: "Load eBPF programs, attach to network hooks"
+        - CAP_SYS_PTRACE: "Read /proc/pid/comm for process attribution"
+      never_required:
+        - CAP_SYS_ADMIN: "Too broad — refuse any implementation requiring this"
+        - CAP_NET_RAW: "Not needed for TC/XDP attach points"
+    user: "Run as dedicated non-root user 'flair-agent' — never as root"
+
+---
+
+ebpf_program_design:
+
+  attach_points:
+    preferred: "TC (Traffic Control) egress/ingress — works in containers and VMs"
+    alternative: "XDP — higher performance but requires hardware support"
+    avoid: "kprobes for network functions — too kernel-version specific"
+
+  map_types:
+    flow_ring_buffer: |
+      // Use BPF_MAP_TYPE_RINGBUF for flow event output — preferred over perf events
+      struct {
+          __uint(type, BPF_MAP_TYPE_RINGBUF);
+          __uint(max_entries, 256 * 1024); // 256KB ring buffer
+      } flow_events SEC(".maps");
+
+    pid_comm_map: |
+      // Cache pid → process name lookups to reduce bpf_get_current_comm() calls
+      struct {
+          __uint(type, BPF_MAP_TYPE_HASH);
+          __uint(max_entries, 1024);
+          __type(key, __u32);    // pid
+          __type(value, char[16]); // comm
+      } pid_comm_cache SEC(".maps");
+
+  tls_fingerprinting:
+    method: "Passive JA3 fingerprinting — parse ClientHello from TCP payload"
+    ja3_fields:
+      - "SSLVersion"
+      - "Ciphers"
+      - "Extensions"
+      - "EllipticCurves"
+      - "EllipticCurvePointFormats"
+    constraint: >
+      JA3 computation happens in userspace (Go), not in the eBPF program.
+      The eBPF program captures the raw ClientHello bytes and passes them
+      via ring buffer. JA3 hash is computed in the Go collector from the raw bytes.
+    tls_version_detection: |
+      // Detect TLS version from ClientHello record version field
+      // TLS 1.3: look for extension type 0x002b (supported_versions)
+      // TLS 1.2: record version 0x0303
+      // TLS 1.1: record version 0x0302 — flag as deprecated
+
+  protocol_detection:
+    strategy: "DPI on first packet payload — fallback to port-based heuristics"
+    port_heuristics:
+      443:   "HTTPS — verify TLS ClientHello; if HTTP/2 preface, mark gRPC"
+      5432:  "PostgreSQL — verify startup message magic"
+      6379:  "Redis — verify RESP protocol marker"
+      5672:  "AMQP — verify protocol header"
+      default: "Unknown — emit with protocol=unknown, do not drop"
+    payload_inspection:
+      max_bytes: 512
+      rule: >
+        Never reassemble TCP streams in eBPF. Inspect first-packet payload only.
+        Stream reassembly happens in userspace if needed.
+
+---
+
+kernel_compatibility:
+
+  minimum_kernel: "4.18 (BPF_MAP_TYPE_RINGBUF requires 5.8 — fallback to perf_event_array on older kernels)"
+
+  version_detection: |
+    func checkKernelVersion() (major, minor int, err error) {
+        var uname syscall.Utsname
+        if err = syscall.Uname(&uname); err != nil {
+            return
+        }
+        // Parse uname.Release for version
+        ...
+    }
+
+  capability_check: |
+    // Verify required capabilities at startup — fail fast with clear error
+    func checkCapabilities() error {
+        caps, err := capability.NewPid2(0)
+        if err != nil {
+            return fmt.Errorf("capability check: %w", err)
+        }
+        required := []capability.Cap{
+            capability.CAP_NET_ADMIN,
+            capability.CAP_SYS_PTRACE,
+        }
+        for _, cap := range required {
+            if !caps.Get(capability.EFFECTIVE, cap) {
+                return fmt.Errorf("missing capability: %s — see deployment docs", cap)
+            }
+        }
+        return nil
+    }
+
+  namespace_awareness: |
+    // In Kubernetes, each pod has its own network namespace
+    // The agent must attach eBPF programs per-namespace
+    // Use netns.GetFromPid() to get the namespace FD for each container PID
+    func attachToNamespace(pid int, prog *ebpf.Program) error {
+        ns, err := netns.GetFromPid(pid)
+        if err != nil {
+            return fmt.Errorf("get netns for pid %d: %w", pid, err)
+        }
+        defer ns.Close()
+        return netns.Set(ns) // attach program in this namespace
+    }
+
+---
+
+flow_batching:
+
+  strategy: >
+    The agent buffers flows in memory and sends batches to flair-core
+    on a configurable interval (default: 10 seconds) or when the buffer
+    reaches a threshold (default: 1000 flows).
+    This prevents overwhelming flair-core with individual HTTP requests
+    and is the foundation for the future NATS migration.
+
+  implementation: |
+    type BatchSender struct {
+        buffer    []*domain.Flow
+        mu        sync.Mutex
+        ticker    *time.Ticker
+        threshold int
+        send      func(ctx context.Context, flows []*domain.Flow) error
+    }
+
+    func (b *BatchSender) Add(flow *domain.Flow) {
+        b.mu.Lock()
+        defer b.mu.Unlock()
+        b.buffer = append(b.buffer, flow)
+        if len(b.buffer) >= b.threshold {
+            b.flush(context.Background())
+        }
+    }
+
+  local_persistence: >
+    If flair-core is unreachable, flows are persisted to a local file buffer
+    (path: /var/lib/flair-agent/buffer.bin) and retried on reconnection.
+    Buffer max size: 100MB. When full, oldest flows are dropped with a warning log.
+
+---
+
+testing_constraints:
+
+  ebpf_unit_tests: >
+    eBPF C programs are tested using the BPF selftest framework.
+    Go unit tests mock the Collector interface — they do not load real eBPF programs.
+
+  integration_tests: >
+    Real eBPF program loading is tested in a Linux container with CAP_NET_ADMIN.
+    Docker Desktop on Windows/Mac runs these in the VM — sufficient for CI.
+    Gate 2 coverage for eBPF integration tests requires a Linux runner in GitHub Actions.
+
+  mock_collector: |
+    // Use in unit tests — no kernel required
+    type MockCollector struct {
+        flows chan domain.Flow
+    }
+
+    func NewMockCollector() *MockCollector {
+        return &MockCollector{flows: make(chan domain.Flow, 100)}
+    }
+
+    func (m *MockCollector) Start(_ context.Context) error { return nil }
+    func (m *MockCollector) Flows() <-chan domain.Flow      { return m.flows }
+    func (m *MockCollector) Close() error                  { close(m.flows); return nil }
+    func (m *MockCollector) Emit(f domain.Flow)            { m.flows <- f }

@@ -1,0 +1,199 @@
+skill:
+  id: flair-authentication
+  version: "1.0"
+  name: "Authentication & Agent Enrollment"
+  description: >
+    Defines authentication patterns for flair-core (OIDC, JWT) and
+    agent enrollment (mTLS, short-lived tokens).
+    Loaded by OIDC/IAM Expert, Application Security Expert, and Dev Agent
+    for any auth, enrollment, or token-related change.
+  applies_to:
+    - flair-core
+    - flair-agent
+    - flair-agent-windows
+    - flair-agent-k8s
+  loaded_by:
+    - OIDC_IAM_Expert
+    - Application_Security_Expert
+    - Dev_Agent
+
+---
+
+oidc_human_users:
+
+  description: "Human user authentication via OIDC (Keycloak, Okta, Azure AD via broker)"
+  flow: |
+    Browser → flair-ui → flair-core /api/v1/auth/callback
+        ↓
+    OIDC Provider (Keycloak / Okta / Azure AD)
+        ↓ ID token + access token
+    flair-core validates token → issues short-lived session JWT
+        ↓
+    flair-ui stores JWT in memory (NOT localStorage)
+
+  rules:
+    - "coreos/go-oidc v3 for token validation — no manual JWT parsing"
+    - "Validate issuer, audience, expiry, and signature on every request"
+    - "PKCE required — no implicit flow"
+    - "Session JWT TTL: 15 minutes. Refresh token TTL: 8 hours."
+    - "JWT stored in memory in Angular — never localStorage, never cookie without SameSite=Strict + Secure"
+
+  middleware: |
+    func OIDCMiddleware(verifier *oidc.IDTokenVerifier) func(http.Handler) http.Handler {
+        return func(next http.Handler) http.Handler {
+            return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+                rawToken := extractBearerToken(r)
+                if rawToken == "" {
+                    http.Error(w, "unauthorized", http.StatusUnauthorized)
+                    return
+                }
+                idToken, err := verifier.Verify(r.Context(), rawToken)
+                if err != nil {
+                    http.Error(w, "unauthorized", http.StatusUnauthorized)
+                    return
+                }
+                ctx := context.WithValue(r.Context(), claimsKey{}, idToken)
+                next.ServeHTTP(w, r.WithContext(ctx))
+            })
+        }
+    }
+
+---
+
+agent_enrollment:
+
+  description: >
+    Agents authenticate with mTLS using short-lived certificates issued at enrollment.
+    Human operator enrolls agent once — subsequent connections use mTLS automatically.
+
+  enrollment_flow: |
+    1. Operator runs: flair-agent enroll --core-url https://core.example.com --token <one-time-token>
+    2. Agent generates ephemeral RSA-4096 key pair locally (never transmitted)
+    3. Agent sends CSR to POST /api/v1/agents/enroll with one-time token in Authorization header
+    4. flair-core validates token (single use, 10 min TTL), signs CSR → returns cert (30-day TTL)
+    5. Agent stores cert + key in OS keystore (Linux: /etc/flair/agent.crt + agent.key, mode 0600)
+    6. All subsequent agent→core connections use mTLS with this cert
+
+  one_time_token:
+    rule: "One-time enrollment tokens: single use, 10 minute TTL, cryptographically random (32 bytes)"
+    generation: |
+      token := make([]byte, 32)
+      if _, err := io.ReadFull(rand.Reader, token); err != nil {
+          return "", fmt.Errorf("enrollment: generate token: %w", err)
+      }
+      return base64.URLEncoding.EncodeToString(token), nil
+    storage: "Stored as bcrypt hash in DB — never plaintext"
+    invalidation: "Invalidated immediately on first use, regardless of TTL"
+
+  mtls_config: |
+    // flair-core TLS config for agent connections
+    tlsCfg := &tls.Config{
+        ClientAuth:   tls.RequireAndVerifyClientCert,
+        ClientCAs:    agentCertPool,     // flair internal CA
+        MinVersion:   tls.VersionTLS13,
+        CipherSuites: nil,               // Go 1.17+ auto-selects secure suites for TLS 1.3
+    }
+
+  cert_rotation:
+    rule: "Agent renews cert when < 7 days remaining. Renewal uses existing cert for auth (mTLS)."
+    endpoint: "POST /api/v1/agents/{id}/cert/renew — authenticated with current valid cert"
+
+---
+
+jwt_claims:
+
+  standard_claims:
+    - "sub: user ID (UUID)"
+    - "iss: flair-core base URL"
+    - "aud: [\"flair-core\"]"
+    - "exp: Unix timestamp"
+    - "iat: Unix timestamp"
+    - "jti: UUID — for revocation"
+
+  flair_custom_claims: |
+    {
+      "sub":   "550e8400-e29b-41d4-a716-446655440000",
+      "email": "user@example.com",
+      "roles": ["rssi", "auditor"],         // flair roles
+      "org":   "acme-corp",
+      "iss":   "https://core.acme.com",
+      "aud":   ["flair-core"],
+      "exp":   1720000000,
+      "iat":   1719999100,
+      "jti":   "7f3c8a..."
+    }
+
+  agent_claims: |
+    {
+      "sub":      "agent:3f7a8b...",        // agent UUID prefixed with "agent:"
+      "agent_id": "3f7a8b...",
+      "hostname": "prod-server-01",
+      "type":     "ebpf-linux",
+      "iss":      "https://core.acme.com",
+      "exp":      1720000000,
+    }
+
+---
+
+rbac:
+
+  roles:
+    rssi:
+      - "Read all flows and alerts"
+      - "Manage scoring rules"
+      - "Export data"
+      - "View audit logs"
+    auditor:
+      - "Read flows (own org only)"
+      - "Read alerts"
+      - "Export data (own org only)"
+    admin:
+      - "All rssi permissions"
+      - "Manage agents (enroll, revoke)"
+      - "Manage users"
+      - "Manage OIDC providers"
+    agent:
+      - "POST /api/v1/flows (ingest only)"
+      - "GET /api/v1/agents/{own_id}/config"
+
+  middleware_pattern: |
+    func RequireRole(roles ...string) func(http.Handler) http.Handler {
+        return func(next http.Handler) http.Handler {
+            return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+                claims := claimsFromContext(r.Context())
+                if !hasAnyRole(claims.Roles, roles) {
+                    http.Error(w, "forbidden", http.StatusForbidden)
+                    return
+                }
+                next.ServeHTTP(w, r)
+            })
+        }
+    }
+
+---
+
+security_rules:
+
+  forbidden:
+    - "JWT secret in code or .env committed to git — use secret manager or env injection"
+    - "HS256 algorithm — use RS256 or ES256 (asymmetric)"
+    - "Disabling TLS verification anywhere (--tls-verify=false is a FLAIR non-negotiable)"
+    - "Logging JWT tokens or private keys at any log level"
+    - "Accepting expired tokens with grace periods — hard reject on exp"
+    - "Trusting X-Forwarded-For header without validating reverse proxy chain"
+
+  required:
+    - "Constant-time comparison for token equality checks (subtle.ConstantTimeCompare)"
+    - "Rate limit on /api/v1/auth/* — max 10 req/min per IP"
+    - "Audit log entry for every enrollment, revocation, and failed auth attempt"
+
+---
+
+gate_checklist:
+  gate_2:
+    - "No JWT secret hardcoded or in committed .env"
+    - "RS256 or ES256 — no HS256"
+    - "Token validation uses go-oidc — no manual parsing"
+    - "mTLS with TLS 1.3 minimum on agent endpoints"
+    - "Enrollment tokens single-use and bcrypt-hashed in DB"
+    - "Failed auth → structured audit log entry"

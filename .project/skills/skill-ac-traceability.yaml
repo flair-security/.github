@@ -1,0 +1,151 @@
+skill:
+  id: flair-ac-traceability
+  version: "1.0"
+  name: "AC Traceability Convention"
+  description: >
+    Defines the exact convention linking every Acceptance Criterion to its test.
+    This is the foundation of Gate 2 and Gate 4 scoring.
+    Without this convention, coverage scores are subjective.
+    Loaded by every agent that writes code or tests.
+  applies_to:
+    - flair-agent
+    - flair-core
+    - flair-ui
+    - flair-agent-windows
+    - flair-agent-k8s
+  loaded_by:
+    - Dev_Agent
+    - QA_Agent
+    - PR_Review_Agent
+
+---
+
+convention:
+
+  ac_id_format: "AC-{us_id}-{sequence} or AC-{us_id}-SEC-{sequence}"
+  examples:
+    - "AC-42-01  → first happy path AC for US-42"
+    - "AC-42-02  → second AC (error case) for US-42"
+    - "AC-42-SEC-01 → first security AC for US-42"
+
+  test_naming:
+
+    go: |
+      # Format: Test{Component}_{AC_ID}_{BriefDescription}
+      func TestEBPFCollector_AC42_01_DetectsGRPCOnPort443(t *testing.T) {}
+      func TestEBPFCollector_AC42_02_ReturnsErrorOnMissingCapability(t *testing.T) {}
+      func TestFlowRepository_AC42_SEC01_RejectsUnauthenticatedSave(t *testing.T) {}
+
+    angular: |
+      // Format: it('AC-{id}: {description}', ...)
+      it('AC-42-01: renders unencrypted flows with red colour', () => {});
+      it('AC-42-SEC-01: does not render stack trace in error tooltip', () => {});
+
+    e2e_playwright: |
+      // Format: test('AC-{id}: {description}', ...)
+      test('AC-42-01: flow map displays cross-zone warning badge', async ({ page }) => {});
+
+  story_file_mapping: |
+    # In the story file (flair-docs/stories/us-42.md), the Test Mapping table
+    # must be populated BEFORE the PR is opened:
+    #
+    # | AC ID        | Test file                                    | Test function                                        | Type        | Status      |
+    # |---|---|---|---|---|
+    # | AC-42-01     | internal/collector/ebpf_collector_test.go    | TestEBPFCollector_AC42_01_DetectsGRPCOnPort443       | integration | ✅ passing   |
+    # | AC-42-02     | internal/collector/ebpf_collector_test.go    | TestEBPFCollector_AC42_02_ReturnsErrorOnMissingCap   | unit        | ✅ passing   |
+    # | AC-42-SEC-01 | internal/auth/middleware_test.go             | TestFlowRepository_AC42_SEC01_RejectsUnauthenticated | unit        | ✅ passing   |
+
+---
+
+gate2_scoring_algorithm:
+
+  description: >
+    Gate 2 is computed by the Dev Agent after every commit.
+    The algorithm is deterministic — two agents running it on the same state
+    must produce the same score.
+
+  algorithm: |
+    score = 0
+
+    # Check 1: AC covered by test (50 points)
+    total_ac = count AC entries in story file Test Mapping table
+    covered_ac = count AC entries where Test field is populated AND test function exists in repo
+    score += round((covered_ac / total_ac) * 50) if total_ac > 0
+
+    # Check 2: No code path without test (30 points)
+    diff_new_functions = count new exported functions/methods in diff
+    tested_functions = count new functions that are called from a test file
+    score += round((tested_functions / diff_new_functions) * 30) if diff_new_functions > 0 else 30
+
+    # Check 3: Test quality spot-check (20 points — QA Agent)
+    # QA Agent reviews test files added in this diff:
+    # - Tests assert on outcomes, not on implementation details
+    # - Tests cover at least happy path + 1 error path per AC
+    # - No trivial tests (assert True or empty test body)
+    # QA Agent scores 0, 10, or 20 based on review
+    score += qa_agent_score  # 0, 10, or 20
+
+    return min(score, 100)
+
+  ac_without_test: |
+    # An AC with empty Test: field in the story file is a pending AC.
+    # Pending ACs reduce score proportionally.
+    # Example: 6 ACs, 5 covered = (5/6) * 50 = 41.7 → round to 42/50
+
+  new_code_without_test: |
+    # A new exported function/method with no test calling it = untested code path.
+    # The Dev Agent must either:
+    # 1. Write the test (preferred)
+    # 2. Add a comment: // Tested indirectly via TestXxx — and reference the test
+    # Option 2 is counted as tested in the Gate 2 algorithm.
+
+---
+
+gate4_traceability_check:
+
+  description: >
+    Gate 4 includes an AC-to-test traceability check worth 25 points.
+    The PR Review Agent runs this algorithm before deciding to merge.
+
+  algorithm: |
+    score = 0
+
+    for each AC in story file Test Mapping table:
+        if AC.Test is empty:
+            score += 0  # Unimplemented AC
+        elif test_function_exists(AC.Test.file, AC.Test.function):
+            if test_function_passes_in_pipeline(AC.Test.function):
+                score += 25 / total_ac  # Full credit
+            else:
+                score += 0  # Test exists but fails — not covered
+        else:
+            score += 0  # Test function referenced but not found
+
+    return round(min(score, 25))
+
+  hard_rule: >
+    If any AC-{id}-SEC-{n} entry has an empty Test: field, Gate 4 is hard-blocked
+    regardless of composite score. Security ACs must all be tested before merge.
+
+---
+
+traceability_antipatterns:
+
+  avoid:
+    - pattern: "Test function name has no AC ID"
+      reason: "Cannot be traced back to a requirement — scores 0 in Gate 2"
+      wrong: "func TestCollectorDetectsGRPC(t *testing.T)"
+      correct: "func TestCollector_AC42_01_DetectsGRPC(t *testing.T)"
+
+    - pattern: "One test covers multiple AC IDs"
+      reason: "If the test fails, all covered ACs fail — hard to diagnose"
+      wrong: "func TestCollector_AC42_01_02_DetectsProtocols(t *testing.T)"
+      correct: "One test function per AC ID"
+
+    - pattern: "AC Test: field populated with a test that tests something different"
+      reason: "Traceability is broken — Gate 4 will catch this in diff review"
+      rule: "Test function name must describe what the AC describes"
+
+    - pattern: "E2E test used as the only coverage for a unit-testable AC"
+      reason: "E2E tests are slow and fragile — unit or integration preferred"
+      rule: "AC type field in story file must match the actual test type"

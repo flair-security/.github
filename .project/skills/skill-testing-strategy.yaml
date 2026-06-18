@@ -1,0 +1,167 @@
+skill:
+  id: flair-testing-strategy
+  version: "1.0"
+  name: "Testing Strategy"
+  description: >
+    Defines the testing pyramid, coverage requirements, test naming conventions,
+    mock policy, and E2E strategy for all FLAIR repos.
+    Loaded by QA Expert and Dev Agent for any test-related work.
+  applies_to:
+    - flair-agent
+    - flair-core
+    - flair-ui
+  loaded_by:
+    - QA_Expert
+    - Dev_Agent
+
+---
+
+pyramid:
+
+  levels:
+    unit:
+      scope: "Single function, method, or small struct — no I/O, no network"
+      location: "_test.go files next to the tested file"
+      tooling: "Go stdlib testing + testify/assert"
+      coverage_target: "≥ 80% on new code (SonarCloud gate)"
+      speed: "< 1ms per test — no sleeps, no real time.Sleep()"
+
+    integration:
+      scope: "Service + real repository against a test DB (Docker container)"
+      location: "integration_test.go or _integration_test.go"
+      tooling: "testcontainers-go for PostgreSQL + AGE"
+      tag: "//go:build integration"
+      rule: "No mocked DB in integration tests — we were burned by mock/prod divergence"
+      coverage_target: "All service methods + repository CRUD + error paths"
+
+    e2e:
+      scope: "Full stack — Angular → flair-core → DB"
+      location: "e2e/ directory, per repo"
+      tooling:
+        flair_ui: "Playwright"
+        flair_core: "Go http/httptest against real DB (testcontainers)"
+      coverage: "Happy path + 1 critical error path per feature"
+      deferral: "E2E may be deferred to next session if test env unavailable — must be tracked in backlog"
+
+---
+
+naming_convention:
+
+  rule: "Test function name encodes: tested type, AC ID, and scenario"
+  format: "Test{Type}_{ACID}_{Scenario}"
+  examples:
+    - "TestEBPFCollector_AC42_01_DetectsGRPC"
+    - "TestFlowService_AC07_03_RejectsUnknownAgent"
+    - "TestCrossZoneScorer_AC15_02_ScoresRestrictedZoneAccess"
+    - "TestFlowHandler_AC07_01_Returns201OnValidIngest"
+
+  table_driven: |
+    func TestTLSScorer_AC23_01_ScoresUnencryptedSensitivePort(t *testing.T) {
+        tests := []struct {
+            name      string
+            flow      domain.Flow
+            wantScore int
+        }{
+            {"port 443 unencrypted", domain.Flow{DstPort: 443, Encrypted: false}, 30},
+            {"port 443 encrypted", domain.Flow{DstPort: 443, Encrypted: true}, 0},
+            {"port 80 unencrypted", domain.Flow{DstPort: 80, Encrypted: false}, 10},
+            {"unknown port unencrypted", domain.Flow{DstPort: 9999, Encrypted: false}, 5},
+        }
+        for _, tt := range tests {
+            t.Run(tt.name, func(t *testing.T) {
+                score, err := (&TLSScorer{}).Score(t.Context(), &tt.flow, nil)
+                assert.NoError(t, err)
+                assert.Equal(t, tt.wantScore, score)
+            })
+        }
+    }
+
+---
+
+mock_policy:
+
+  rule: >
+    Mock interfaces, not concrete types.
+    Use real implementations for integration tests — not mocks.
+    Never mock the database in tests that validate data persistence.
+
+  tools:
+    - "testify/mock for unit test mocks"
+    - "testcontainers-go for real DB in integration tests"
+
+  what_to_mock_in_unit:
+    - "External HTTP calls (OIDC provider, webhook delivery)"
+    - "Clock (inject a clock interface — never call time.Now() directly in testable code)"
+    - "Outbound ports (FlowRepository, FlowScorer) in service unit tests"
+
+  what_never_to_mock:
+    - "The database in integration tests"
+    - "The HTTP router in handler tests (use httptest.NewRecorder)"
+    - "The domain layer"
+
+  clock_injection: |
+    // Inject clock — never time.Now() directly in testable code
+    type Clock interface {
+        Now() time.Time
+    }
+
+    type realClock struct{}
+    func (c *realClock) Now() time.Time { return time.Now() }
+
+    // In tests:
+    type fixedClock struct{ t time.Time }
+    func (c *fixedClock) Now() time.Time { return c.t }
+
+---
+
+coverage:
+
+  gate: "SonarCloud blocks merge if new code coverage < 80%"
+  measurement: "go test -coverprofile=coverage.out ./..."
+  exclusions:
+    - "main.go (wiring only)"
+    - "Generated code (mocks, protobuf)"
+    - "E2E test files"
+  rule: "Coverage excludes are declared in sonar-project.properties — not in source files"
+
+---
+
+flair_agent_tests:
+
+  constraint: >
+    eBPF programs require a Linux kernel — cannot run on Docker Desktop.
+    Unit tests use mock packet data. Full eBPF validation requires a Linux test server.
+
+  strategy:
+    unit: "Inject mock packet streams — test protocol detection logic without kernel"
+    integration: "Docker Desktop with privileged Linux container — tests eBPF load + basic flow emission"
+    full_validation: "Linux test server — performance, kernel compatibility, network namespace isolation"
+
+  rule: "CI pipeline runs unit + integration. Full eBPF validation is a manual gate before release."
+
+---
+
+angular_testing:
+
+  unit:
+    tool: "Jasmine + Karma (default Angular)"
+    rule: "OnPush components: trigger ChangeDetectorRef.detectChanges() in tests"
+    coverage_target: "≥ 80% on components and services"
+
+  e2e:
+    tool: "Playwright"
+    scope: "Critical flows: login, flow map render, alert list, export"
+    rule: "Never use fixed timeouts — use Playwright's await + locators"
+
+---
+
+gate_checklist:
+  gate_2:
+    - "New code accompanied by unit tests covering all branches"
+    - "Integration tests cover service + repository happy path and error path"
+    - "Test names follow Test{Type}_{ACID}_{Scenario} convention"
+    - "No time.Now() calls in testable functions — clock injected"
+    - "No mocked DB in integration tests"
+    - "SonarCloud coverage gate ≥ 80% on new code"
+  gate_4:
+    - "E2E spec for happy path exists or tracked as deferred backlog item"

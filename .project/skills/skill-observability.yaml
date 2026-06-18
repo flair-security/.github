@@ -1,0 +1,210 @@
+skill:
+  id: flair-observability
+  version: "1.0"
+  name: "Observability"
+  description: >
+    Defines structured logging, Prometheus metrics, health endpoints,
+    and distributed tracing conventions for flair-core and flair-agent.
+    Every flair-core API action must emit a structured JSON log line to stdout.
+    Loaded by DevSecOps Expert and Dev Agent for any logging or metrics change.
+  applies_to:
+    - flair-core
+    - flair-agent
+  loaded_by:
+    - DevSecOps_Expert
+    - Dev_Agent
+
+---
+
+structured_logging:
+
+  rule: "Every flair-core API action emits a structured JSON log line to stdout — FLAIR non-negotiable"
+  library: "log/slog (Go 1.21+) — no logrus, no zap, no fmt.Printf in production code"
+  format: "JSON handler in production, text handler in dev (controlled by LOG_FORMAT env var)"
+
+  initialization: |
+    // main.go
+    var handler slog.Handler
+    if os.Getenv("LOG_FORMAT") == "text" {
+        handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+    } else {
+        handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+    }
+    slog.SetDefault(slog.New(handler))
+
+  required_fields:
+    all_requests:
+      - "time: RFC 3339 timestamp (added by slog JSON handler)"
+      - "level: INFO | WARN | ERROR"
+      - "msg: short description of the action"
+      - "request_id: UUID from middleware"
+      - "method: HTTP method"
+      - "path: URL path (no query string — may contain PII)"
+      - "status: HTTP status code"
+      - "duration_ms: request duration"
+
+    flow_ingest:
+      - "agent_id: string"
+      - "flow_id: UUID"
+      - "src_ip: string"
+      - "dst_ip: string"
+      - "protocol: string"
+      - "score: int (if scored)"
+
+    auth_events:
+      - "event: enrolled | revoked | login | logout | auth_failed"
+      - "user_id or agent_id"
+      - "ip: client IP"
+
+  pattern: |
+    // Middleware logs every request
+    func LoggingMiddleware(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            start := time.Now()
+            rw := &responseWriter{ResponseWriter: w}
+            next.ServeHTTP(rw, r)
+            slog.InfoContext(r.Context(), "request",
+                "request_id", requestIDFromContext(r.Context()),
+                "method", r.Method,
+                "path", r.URL.Path,
+                "status", rw.status,
+                "duration_ms", time.Since(start).Milliseconds(),
+            )
+        })
+    }
+
+  forbidden:
+    - "fmt.Printf, fmt.Println, log.Printf in production code paths"
+    - "Logging sensitive data: JWT tokens, private keys, passwords, full request bodies"
+    - "Unstructured log lines (plain strings without key-value pairs)"
+    - "log.Fatal() outside main() — panics goroutines and skips deferred cleanup"
+
+  log_levels:
+    DEBUG: "Detailed internal state — disabled in production by default"
+    INFO:  "Normal operations — every API request, enrollment, alert triggered"
+    WARN:  "Unexpected but recoverable — retried operations, deprecated endpoint called"
+    ERROR: "Failed operations that were returned to caller — always include error field"
+
+---
+
+prometheus_metrics:
+
+  library: "prometheus/client_golang"
+  exposition: "GET /metrics — standard Prometheus scrape endpoint"
+  namespace: "flair"
+
+  required_metrics:
+    flair_core:
+      - name: "flair_http_requests_total"
+        type: "Counter"
+        labels: [method, path, status]
+        description: "Total HTTP requests by method, path, and status code"
+
+      - name: "flair_http_request_duration_seconds"
+        type: "Histogram"
+        labels: [method, path]
+        buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5]
+        description: "HTTP request latency"
+
+      - name: "flair_flows_ingested_total"
+        type: "Counter"
+        labels: [agent_id, protocol]
+        description: "Total flows ingested"
+
+      - name: "flair_alerts_triggered_total"
+        type: "Counter"
+        labels: [zone_src, zone_dst]
+        description: "Total alerts triggered by zone pair"
+
+      - name: "flair_active_agents"
+        type: "Gauge"
+        description: "Number of agents with connection in last 5 minutes"
+
+    flair_agent:
+      - name: "flair_agent_flows_captured_total"
+        type: "Counter"
+        labels: [protocol]
+        description: "Total flows captured by this agent"
+
+      - name: "flair_agent_core_send_errors_total"
+        type: "Counter"
+        description: "Total failed attempts to send flows to flair-core"
+
+      - name: "flair_agent_queue_size"
+        type: "Gauge"
+        description: "Current size of the local buffering queue (flows pending send)"
+
+  registration_pattern: |
+    var (
+        flowsIngested = promauto.NewCounterVec(prometheus.CounterOpts{
+            Namespace: "flair",
+            Name:      "flows_ingested_total",
+            Help:      "Total flows ingested.",
+        }, []string{"agent_id", "protocol"})
+    )
+
+    // In service:
+    flowsIngested.WithLabelValues(cmd.AgentID, flow.Protocol).Inc()
+
+  cardinality_rule: >
+    Label values must have bounded cardinality.
+    Never use agent_id in high-cardinality label positions for global counters.
+    agent_id acceptable only in per-agent metrics.
+
+---
+
+health_endpoints:
+
+  liveness:
+    path: "GET /healthz"
+    response: |
+      {"status": "ok"}
+    rule: "Returns 200 if process is alive — no dependency checks. Kubernetes liveness probe."
+
+  readiness:
+    path: "GET /readyz"
+    response: |
+      {
+        "status": "ok",                  // or "degraded"
+        "checks": {
+          "database": "ok",
+          "graph":    "ok",
+          "oidc":     "ok"
+        }
+      }
+    rule: "Returns 200 only if all dependencies are reachable. 503 if any check fails."
+    rule_timeout: "Each dependency check has a 2s timeout — readiness probe never hangs"
+
+  metrics:
+    path: "GET /metrics"
+    auth: "No auth — scrape endpoint on internal network only (not exposed externally)"
+
+---
+
+request_id:
+
+  rule: "Every incoming request gets a UUID request_id injected by middleware — present in all log lines and all error responses"
+  header_in:  "X-Request-ID (accepted from upstream proxy if present and valid UUID)"
+  header_out: "X-Request-ID (always echoed in response)"
+  pattern: |
+    func RequestIDMiddleware(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            requestID := r.Header.Get("X-Request-ID")
+            if _, err := uuid.Parse(requestID); err != nil {
+                requestID = uuid.New().String()
+            }
+            ctx := context.WithValue(r.Context(), requestIDKey{}, requestID)
+            w.Header().Set("X-Request-ID", requestID)
+            next.ServeHTTP(w, r.WithContext(ctx))
+        })
+    }
+
+---
+
+gate_checklist:
+  gate_2:
+    - "Every new API handler uses LoggingMiddleware — not manual log.Printf"
+    - "No sensitive fields (token, password, key) in any log line"
+    - "New Prometheus metrics registered with correct namespace and help text"
+    - "New metrics labels have bounded cardinality"
+    - "Health endpoints respond within 100ms on healthy system"

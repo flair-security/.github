@@ -1,0 +1,242 @@
+skill:
+  id: flair-ux-ui-design
+  version: "1.0"
+  name: "UX & UI Design"
+  description: >
+    Governs visual design principles, component design system, interaction patterns,
+    information hierarchy and user experience for flair-ui.
+    The primary user is a RSSI or security auditor — not a developer.
+    Design decisions must serve clarity, speed of understanding and auditability.
+  applies_to:
+    - flair-ui
+  loaded_by:
+    - Angular_Frontend_Expert
+    - Dev_Agent
+    - QA_Expert
+
+---
+
+user_context:
+
+  primary_persona:
+    role: "RSSI / Security Auditor"
+    goal: "Answer 'is our infrastructure secure?' in under 60 seconds"
+    mental_model: "Risk — not topology. They think in threats, not in network graphs."
+    key_questions:
+      - "What flows are unencrypted right now?"
+      - "Which services cross security boundaries they shouldn't?"
+      - "Has our security posture improved since last week?"
+      - "What do I show to an auditor as evidence?"
+
+  secondary_persona:
+    role: "Security Engineer"
+    goal: "Diagnose a specific flow, understand its protocol and fix the issue"
+    mental_model: "Technical — they want raw data, ports, PIDs, cipher suites"
+
+  design_principle: >
+    The RSSI view is the default. The Engineer view is a drill-down.
+    Never force the RSSI to wade through technical detail to get their answer.
+
+---
+
+design_system:
+
+  palette:
+    primary_dark:   "#0d0f12"   # Background dark
+    surface_dark:   "#13161b"   # Card/panel background
+    surface_light:  "#1a1e25"   # Secondary surface
+    text_primary:   "#e8eaf0"
+    text_secondary: "#8b90a0"
+    text_tertiary:  "#555b6e"
+
+    semantic:
+      ok:     "#00d97e"   # TLS 1.3, score ≥ 70 — GREEN
+      warn:   "#f5a623"   # TLS 1.2, score 30-69 — AMBER
+      danger: "#ff4d6d"   # Unencrypted, score < 30 — RED
+      info:   "#4d9fff"   # Neutral / informational — BLUE
+
+    rule: >
+      Colour alone never conveys meaning — always pair with text label or icon.
+      WCAG 2.1 AA contrast ratio minimum: 4.5:1 for text, 3:1 for UI components.
+
+  typography:
+    technical_labels: "IBM Plex Mono — protocol names, ports, scores, IPs, PIDs"
+    ui_text:          "DM Sans — navigation, descriptions, tooltips, headings"
+    rule: "Never use font sizes below 11px. Minimum touch target: 44x44px."
+
+  spacing:
+    base_unit: "8px"
+    scale: [4, 8, 12, 16, 24, 32, 48, 64]
+    rule: "All spacing is a multiple of 4px. No arbitrary values."
+
+  border_radius:
+    small:  "4px — badges, chips, code blocks"
+    medium: "6px — buttons, inputs"
+    large:  "12px — cards, panels"
+    full:   "9999px — pills only"
+
+  elevation:
+    rule: "No drop shadows. Elevation is conveyed through background colour difference only."
+    levels:
+      0: "Page background #0d0f12"
+      1: "Card/panel #13161b"
+      2: "Overlay/modal #1a1e25"
+
+---
+
+information_hierarchy:
+
+  rssi_dashboard:
+    above_fold:
+      - "Global security score (0-100, large number, coloured)"
+      - "Count of critical alerts (unencrypted flows, deprecated TLS)"
+      - "Score trend sparkline (7 days)"
+    below_fold:
+      - "Flow map (interactive graph)"
+      - "Alert list (sorted by severity)"
+      - "Agent status (all green / X offline)"
+
+  flow_map:
+    primary_encoding: "Edge colour = encryption status (green/amber/red)"
+    secondary_encoding: "Edge style — solid (TLS 1.3), dashed (TLS 1.2), dotted (none)"
+    node_encoding: "Border colour = worst incoming/outgoing flow colour"
+    label_on_edge: "Protocol + port (e.g. HTTP :8080) — monospace, small"
+    cross_zone_marker: "⚡ icon on edges that cross zone boundaries"
+    zones: "Dashed rectangle with label — DMZ (amber border), INTERNAL (blue), DATA (purple), EXTERNAL (red)"
+
+  detail_panel:
+    principle: "Progressive disclosure — show risk first, technical detail on expand"
+    level_1: "Service name, score, colour, cross-zone flag, last seen"
+    level_2: "Protocol, port, TLS version, cipher suite, bytes/day"
+    level_3: "PID, process name, container ID, JA3 hash, raw metadata"
+
+---
+
+interaction_patterns:
+
+  flow_map_interactions:
+    click_node: "Select node → detail panel slides in from right"
+    click_edge: "Select flow → detail panel shows flow detail"
+    click_zone: "Filter map to show only flows crossing this zone"
+    double_click: "Expand node neighbours (show all connected services)"
+    hover_node: "Tooltip: name, score, flow count — appears after 300ms delay"
+    hover_edge: "Tooltip: protocol, port, TLS version, bytes"
+    keyboard:
+      tab: "Navigate between nodes"
+      enter: "Select focused node"
+      escape: "Deselect / close panel"
+      plus_minus: "Zoom in/out"
+      space: "Reset zoom to fit"
+
+  loading_states:
+    skeleton: "Skeleton screens for dashboard cards and flow map — never spinner-only"
+    partial_load: "Show nodes as they arrive — do not wait for full graph before rendering"
+    error: "Inline error with retry button — never full-page error for partial failures"
+
+  empty_states:
+    no_agents: |
+      Icon + heading + description + CTA:
+      "No agents connected yet.
+       Deploy flair-agent on your servers to start mapping flows.
+       [View deployment guide →]"
+    no_alerts: |
+      "No critical alerts. Your infrastructure looks good."
+      (Green background — make it feel like a reward, not an empty state)
+
+---
+
+component_design:
+
+  flow_node:
+    shape: "Rounded rectangle (12px radius)"
+    min_width: "120px"
+    max_width: "200px (truncate with ellipsis)"
+    content: "Service name (DM Sans 13px) + zone badge + score pill"
+    border: "2px solid {semantic_colour based on score}"
+    hover: "border-width → 3px, cursor: pointer"
+
+  flow_edge:
+    line_weight:
+      default: "1.5px"
+      selected: "3px"
+      cross_zone: "2px (slightly heavier)"
+    arrow: "Small chevron (not filled arrow) — direction = connection initiator"
+    label:
+      position: "Center of edge, slight offset to avoid overlap"
+      font: "IBM Plex Mono 10px"
+      background: "Semi-opaque #13161b 80% — prevents overlap with other edges"
+
+  score_badge:
+    format: "Score number + colour fill"
+    sizes:
+      large: "24px number — hero display in dashboard"
+      medium: "16px — in detail panel"
+      small: "12px — inline in tables"
+    colour_rule: "Background = semantic colour at 15% opacity. Text = semantic colour full."
+
+  alert_card:
+    layout: "Icon (left) + title + description (right) + timestamp (top-right)"
+    colours:
+      critical: "Red border-left 3px + red-tinted background"
+      warn: "Amber border-left 3px + amber-tinted background"
+    action: "Entire card is clickable — navigates to the flow in the map"
+
+---
+
+responsive_design:
+
+  breakpoints:
+    desktop: ">= 1280px — full flow map + side panel"
+    tablet:  "768-1279px — flow map full width, panel as bottom sheet"
+    mobile:  "< 768px — no flow map (too complex), list view only"
+
+  flow_map_minimum: >
+    The flow map requires minimum 800px width to be useful.
+    On smaller screens, show a simplified list of flows grouped by severity.
+    Never shrink the graph — it becomes unreadable.
+
+---
+
+dark_light_theme:
+
+  default: "Dark mode — RSSI tools are typically used in low-light SOC environments"
+  toggle: "User preference persisted in localStorage. Respects OS preference on first load."
+
+  light_mode_palette:
+    background: "#f4f4f0"
+    surface:    "#ffffff"
+    surface_2:  "#f0f0ea"
+    text:       "#0d0f12"
+    text_2:     "#555b6e"
+    semantic: "Same as dark mode (green/amber/red/blue unchanged)"
+
+---
+
+ux_ac_challenge:
+
+  protocol: >
+    The UX/UI Design Expert reviews every US that touches flair-ui.
+    These questions are asked for each AC involving a new UI component or interaction.
+
+  questions:
+    q1_rssi_first: |
+      Does the primary information serve the RSSI mental model (risk) or the engineer (data)?
+      If engineer-first: add a progressive disclosure layer so RSSI sees risk summary first.
+
+    q2_colour_accessibility: |
+      Is colour used as the sole differentiator between states?
+      If yes: add secondary encoding (label, icon, shape, pattern).
+      Verify contrast ratio meets WCAG 2.1 AA (4.5:1 for text, 3:1 for UI components).
+
+    q3_empty_and_loading: |
+      Does this feature have an empty state and a loading state defined?
+      Empty state: what does the user see if no data exists yet?
+      Loading state: skeleton screen or progressive render — not a spinner blocking the UI.
+
+    q4_keyboard_nav: |
+      Is every interactive element reachable via keyboard (Tab) and activatable (Enter/Space)?
+      Is the focus ring visible (outline: 2px solid {semantic_colour})?
+
+    q5_mobile_degradation: |
+      On screens < 768px, does this feature degrade gracefully?
+      If it requires the flow map: is a list fallback provided?

@@ -1,0 +1,197 @@
+skill:
+  id: flair-devops-cicd
+  version: "1.0"
+  name: "DevOps & CI/CD"
+  description: >
+    Defines the CI/CD pipeline structure, quality gates, tooling configuration,
+    and Semantic Release conventions for all FLAIR repos.
+    Loaded by DevSecOps Expert and Dev Agent for any pipeline, Dockerfile, or release change.
+  applies_to:
+    - flair-agent
+    - flair-core
+    - flair-ui
+    - flair-helm
+  loaded_by:
+    - DevSecOps_Expert
+    - Dev_Agent
+
+---
+
+pipeline:
+
+  structure: |
+    push / PR
+        │
+        ├── 1. Build          compile binary / Docker image + size check
+        ├── 2. Tests          unit + integration + E2E + SonarCloud coverage gate
+        ├── 3. Quality        lint + format + static analysis
+        ├── 4. Security audit Semgrep + CodeQL + TruffleHog + Dependabot SBOM
+        ├── 5. Publish        push Docker image + release artefacts
+        └── 6. Deploy         Semantic Release + GPG signatures + deployment (main only)
+
+  rules:
+    - "Sequential — each step blocks the next on failure"
+    - "Merge to main only when full pipeline is green — no exceptions"
+    - "PR pipelines run steps 1–4 only — no publish/deploy on branches"
+    - "main pipeline runs all 6 steps"
+
+  image_size_limit:
+    flair_agent: "< 20 MB compressed Docker image"
+    flair_core:  "< 50 MB"
+    rule: "Build step fails with explicit error if image exceeds limit"
+
+---
+
+github_actions:
+
+  workflow_structure:
+    location: ".github/workflows/"
+    naming: "<repo>-<purpose>.yml  e.g. flair-core-ci.yml"
+    required_workflows:
+      - "ci.yml          — triggered on push + PR"
+      - "release.yml     — triggered on push to main after CI green"
+      - "dependency.yml  — Dependabot + weekly SBOM audit"
+
+  reusable_workflows:
+    rule: "Shared steps extracted to .github/workflows/shared/ as reusable workflows"
+    examples:
+      - "shared/go-build.yml"
+      - "shared/docker-build.yml"
+      - "shared/semgrep.yml"
+
+  runner:
+    default: "ubuntu-latest"
+    ebpf_tests: "self-hosted Linux runner with kernel ≥ 5.10 for full eBPF validation"
+
+  caching:
+    go:   "actions/cache on ~/.cache/go-build and ~/go/pkg/mod"
+    node: "actions/cache on ~/.npm"
+    rule: "Always cache to avoid redundant downloads — cache key includes hash of go.sum / package-lock.json"
+
+  permissions:
+    rule: "Minimal permissions per job — never GITHUB_TOKEN with write-all"
+    pattern: |
+      permissions:
+        contents: read
+        security-events: write  # for CodeQL SARIF upload only
+
+---
+
+quality_tools:
+
+  golangci_lint:
+    config: ".golangci.yml at repo root"
+    required_linters:
+      - "errcheck     — catches ignored errors"
+      - "gosec        — security anti-patterns"
+      - "govet        — suspicious constructs"
+      - "staticcheck  — comprehensive static analysis"
+      - "unused       — dead code detection"
+      - "revive       — style enforcement"
+    rule: "No warning suppressed without // nolint:<linter> — <justification> comment"
+
+  sonarcloud:
+    gate: "Quality gate blocks merge if: coverage < 80% new code, new security/reliability issues, duplications > 3%"
+    config: "sonar-project.properties at repo root"
+    rule: "False positives suppressed with // NOSONAR — <justification> (justification required)"
+
+  semgrep:
+    config: ".semgrep/ directory at repo root"
+    rulesets:
+      - "p/golang — Go security patterns"
+      - "p/docker  — Dockerfile security"
+      - "flair-custom/ — project-specific rules"
+    false_positive: "// nosemgrep: <rule-id> — suppresses specific rule for that line"
+
+  codeql:
+    languages: ["go", "javascript"]
+    schedule: "Weekly + on every PR to main"
+    rule: "CodeQL alerts block merge — no dismissal without security team sign-off"
+
+  trufflehog:
+    scope: "Full git history scan on PR + nightly on main"
+    rule: "Any detected secret blocks the pipeline — rotate immediately, do not just delete the commit"
+
+---
+
+semantic_release:
+
+  rule: "Semantic Release is authoritative for versions — no manual git tags"
+  config: ".releaserc.json at repo root"
+  branch: "main only"
+
+  commit_types_to_releases:
+    breaking_change: "major — any commit with BREAKING CHANGE footer"
+    feat:            "minor"
+    fix:             "patch"
+    perf:            "patch"
+    others:          "no release (chore, docs, refactor, test, ci)"
+
+  releaserc_template: |
+    {
+      "branches": ["main"],
+      "plugins": [
+        "@semantic-release/commit-analyzer",
+        "@semantic-release/release-notes-generator",
+        "@semantic-release/changelog",
+        "@semantic-release/github",
+        ["@semantic-release/exec", {
+          "publishCmd": "scripts/sign-release.sh ${nextRelease.version}"
+        }]
+      ]
+    }
+
+  gpg_signatures:
+    rule: "All release artefacts (binaries, Docker manifests) signed with GPG"
+    verification: "Public key published to GitHub releases and docs"
+    script: "scripts/sign-release.sh — signs SHA256SUMS file"
+
+  sbom:
+    tool: "syft"
+    format: "SPDX 2.3 JSON"
+    attached_to: "Every GitHub release as flair-{repo}-{version}-sbom.spdx.json"
+    rule: "SBOM generated as part of publish step — not optional"
+
+---
+
+docker:
+
+  rules:
+    - "Multi-stage builds — builder stage separate from runtime stage"
+    - "Runtime image: distroless or scratch for Go binaries"
+    - "No package manager (apt, apk) in runtime stage"
+    - "Non-root user in runtime stage: USER 65534 (nobody)"
+    - "No secrets in Dockerfile or build args — use secret mounts"
+    - "COPY --chown=65534:65534 binary /app/binary"
+
+  flair_agent_constraint: |
+    # flair-agent requires Linux capabilities — documented in Dockerfile
+    # Capabilities granted at runtime by DaemonSet / docker run, not in Dockerfile
+    # Dockerfile must NOT use --privileged or add capabilities at build time
+
+  example: |
+    FROM golang:1.23-alpine AS builder
+    WORKDIR /build
+    COPY go.mod go.sum ./
+    RUN go mod download
+    COPY . .
+    RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /flair-core ./cmd/flair-core
+
+    FROM gcr.io/distroless/static-debian12:nonroot
+    COPY --from=builder --chown=65534:65534 /flair-core /flair-core
+    USER 65534
+    ENTRYPOINT ["/flair-core"]
+
+---
+
+gate_checklist:
+  gate_2:
+    - "New workflow file uses minimal GITHUB_TOKEN permissions"
+    - "Go lint clean — no ignored warnings without justification"
+    - "Docker image non-root user, no secrets in layers"
+    - "Semantic Release config unchanged unless intentional version bump"
+  gate_4:
+    - "SonarCloud gate green"
+    - "Semgrep and CodeQL clean"
+    - "TruffleHog found no secrets"
+    - "SBOM generated for release"

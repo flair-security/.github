@@ -1,0 +1,226 @@
+skill:
+  id: flair-community-governance
+  version: "1.0"
+  name: "Community & Open Source Governance"
+  description: >
+    Governs contributing guide, issue triage, PR review etiquette,
+    OpenSSF security posture, license compliance and community health
+    for the flair-sec open source organisation.
+  applies_to:
+    - flair-agent
+    - flair-core
+    - flair-ui
+    - flair-docs
+    - flair-rules
+  loaded_by:
+    - Documentation_Expert
+    - Scrum_Master
+    - PO_Agent
+
+---
+
+contributing_guide:
+
+  location: "CONTRIBUTING.md at repo root — linked from README"
+
+  structure: |
+    # Contributing to FLAIR
+
+    ## Getting started
+    - Development environment (Docker Desktop)
+    - Running tests
+    - Building locally
+
+    ## How to contribute
+    - Reporting bugs (issue template)
+    - Suggesting features (issue template)
+    - Submitting a PR
+
+    ## Development workflow
+    - OneFlow branch model (feat/us-{id}-{slug})
+    - Conventional Commits
+    - AC-driven development — link your PR to a story file
+
+    ## Code standards
+    - Link to CLAUDE.md for full standards
+    - Linter requirements (golangci-lint / eslint)
+    - Test requirements (coverage, AC traceability)
+
+    ## Community
+    - Code of Conduct
+    - Security disclosure (SECURITY.md)
+
+---
+
+issue_templates:
+
+  bug_report: |
+    # .github/ISSUE_TEMPLATE/bug_report.yml
+    name: Bug Report
+    description: Something is not working as expected
+    labels: [bug, triage]
+    body:
+      - type: input
+        id: version
+        attributes:
+          label: FLAIR version
+          placeholder: "1.2.3"
+        validations: { required: true }
+      - type: textarea
+        id: description
+        attributes:
+          label: What happened?
+          description: Clear description of the bug
+        validations: { required: true }
+      - type: textarea
+        id: reproduction
+        attributes:
+          label: Steps to reproduce
+          placeholder: "1. Deploy flair-agent on Linux kernel 5.15\n2. ..."
+        validations: { required: true }
+      - type: textarea
+        id: expected
+        attributes:
+          label: Expected behaviour
+        validations: { required: true }
+      - type: dropdown
+        id: platform
+        attributes:
+          label: Platform
+          options: [Linux, Windows, Kubernetes, Other]
+        validations: { required: true }
+
+  feature_request: |
+    # .github/ISSUE_TEMPLATE/feature_request.yml
+    name: Feature Request
+    description: Suggest a new capability for FLAIR
+    labels: [enhancement, triage]
+    body:
+      - type: textarea
+        id: problem
+        attributes:
+          label: What problem does this solve?
+          description: >
+            Describe the security or compliance problem you are trying to solve.
+            Who is the user? What is their goal?
+        validations: { required: true }
+      - type: textarea
+        id: solution
+        attributes:
+          label: Proposed solution
+        validations: { required: true }
+      - type: dropdown
+        id: component
+        attributes:
+          label: Which component?
+          options: [flair-agent, flair-core, flair-ui, flair-rules, Other]
+
+---
+
+pr_etiquette:
+
+  as_author:
+    - "Link your PR to the story file: `flair-docs/stories/us-{id}.md`"
+    - "Fill in the PR template — do not delete sections"
+    - "Self-review your diff before requesting review"
+    - "Keep PRs focused — one US per PR"
+    - "Respond to review comments within 48h"
+
+  as_reviewer:
+    - "Review the AC first — does the code implement what was promised?"
+    - "Be specific in feedback — link to the relevant skill or standard"
+    - "Approve explicitly or request changes — no silent merges"
+    - "Security issues → label `security` + request Blue Team review"
+    - "Review within 48h of being assigned"
+
+  pr_template: |
+    # .github/PULL_REQUEST_TEMPLATE.md
+    ## Story file
+    [US-{{ id }}](../flair-docs/stories/us-{{ id }}.md)
+
+    ## Summary
+    <!-- What does this PR do? -->
+
+    ## Gate artifacts
+    - Gate 1: `docs/gates/us-{{ id }}/gate-1.yaml`
+    - Gate 2 (latest): `docs/gates/us-{{ id }}/gate-2-{{ sha }}.yaml`
+    - Gate 3: `docs/gates/us-{{ id }}/gate-3.yaml`
+
+    ## AC coverage
+    <!-- List each AC and the test that covers it -->
+    | AC ID | Test | Status |
+    |---|---|---|
+    | AC-{{ id }}-01 | TestXxx_AC01 | ✅ |
+
+    ## Checklist
+    - [ ] Rebase on latest main
+    - [ ] All AC covered by tests
+    - [ ] No secrets in diff
+    - [ ] GoDoc / TSDoc on all exported symbols
+    - [ ] co-authored-by on all commits
+
+---
+
+openssf:
+
+  scorecard_targets:
+    branch_protection:    ">= 7/10 — require PR, require status checks, no force push"
+    code_review:          ">= 7/10 — all changes reviewed before merge"
+    vulnerability_alerts: "10/10 — Dependabot enabled on all repos"
+    signed_releases:      ">= 8/10 — GPG-signed tags and release artifacts"
+    ci_tests:             "10/10 — CI runs on every commit"
+    token_permissions:    ">= 7/10 — workflows use minimal GITHUB_TOKEN permissions"
+
+  badge: |
+    # In README.md
+    [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/flair-security/flair-core/badge)](https://securityscorecards.dev/viewer/?uri=github.com/flair-security/flair-core)
+
+---
+
+license_compliance:
+
+  header: |
+    // Copyright (C) 2026 flair-sec contributors
+    // SPDX-License-Identifier: GPL-3.0-or-later
+
+  matrix:
+    gpl_v3: [flair-agent, flair-core, flair-agent-windows, flair-agent-k8s]
+    apache_2: [flair-ui, flair-helm, flair-terraform-aws, flair-terraform-azure, flair-terraform-gcp, flair-sdk-go, flair-sdk-python]
+    cc0: [flair-rules]
+    cc_by_4: [flair-docs]
+
+  third_party_rule: >
+    No GPL-incompatible dependency in flair-agent or flair-core.
+    SBOM is generated in CI — any new dependency triggers a license check.
+    Apache 2.0 and MIT dependencies are always acceptable.
+    LGPL requires documented justification in the PR.
+
+---
+
+security_disclosure:
+
+  file: "SECURITY.md at repo root"
+
+  content: |
+    # Security Policy
+
+    ## Supported versions
+    | Version | Supported |
+    |---|---|
+    | latest | ✅ |
+    | latest - 1 | ✅ security fixes only |
+    | older | ❌ |
+
+    ## Reporting a vulnerability
+    **Do not open a public GitHub issue for security vulnerabilities.**
+
+    Report via GitHub Private Vulnerability Reporting:
+    https://github.com/flair-security/{repo}/security/advisories/new
+
+    You will receive acknowledgement within 48 hours.
+    We target a fix within 7 days for critical, 30 days for high severity.
+
+    ## Disclosure policy
+    We follow coordinated disclosure.
+    After the fix is released, we will publish a security advisory
+    with CVE assignment if applicable.

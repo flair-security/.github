@@ -1,0 +1,187 @@
+skill:
+  id: flair-terraform-patterns
+  version: "1.0"
+  name: "Terraform — Multi-Cloud Patterns"
+  description: >
+    Governs Terraform module structure, state management, variable conventions,
+    cloud-native identity and naming patterns for flair-terraform-aws/azure/gcp.
+  applies_to:
+    - flair-terraform-aws
+    - flair-terraform-azure
+    - flair-terraform-gcp
+  loaded_by:
+    - Terraform_Expert
+    - Dev_Agent
+
+---
+
+module_structure: |
+  flair-terraform-aws/
+    modules/
+      flair-core/           # flair-core infrastructure (ECS/EKS + RDS)
+        main.tf
+        variables.tf
+        outputs.tf
+        versions.tf
+      flair-agent/          # Agent deployment (EC2 userdata or EKS DaemonSet)
+        main.tf
+        variables.tf
+        outputs.tf
+      networking/           # VPC, subnets, security groups
+        main.tf
+        variables.tf
+        outputs.tf
+    examples/
+      minimal/              # Minimal deployment — one region, one AZ
+        main.tf
+        terraform.tfvars.example
+      ha/                   # High availability — multi-AZ
+        main.tf
+        terraform.tfvars.example
+    README.md
+
+---
+
+principles:
+
+  no_hardcoded_values:
+    rule: "Every value is a variable with type, description and validation block"
+    correct: |
+      variable "region" {
+        type        = string
+        description = "AWS region to deploy flair into"
+        validation {
+          condition     = can(regex("^[a-z]{2}-[a-z]+-[0-9]$", var.region))
+          error_message = "Region must be a valid AWS region (e.g. eu-west-1)"
+        }
+      }
+    wrong: |
+      resource "aws_instance" "core" {
+        ami           = "ami-12345678"  # NEVER hardcode AMI IDs
+        instance_type = "t3.medium"     # Must be a variable
+      }
+
+  no_secrets_in_state:
+    rule: >
+      Secrets (DB passwords, API keys, TLS certs) are never stored in Terraform state.
+      Use AWS Secrets Manager / Azure Key Vault / GCP Secret Manager.
+    pattern: |
+      # Reference secret — never create it with Terraform if it contains sensitive data
+      data "aws_secretsmanager_secret_version" "db_password" {
+        secret_id = var.db_password_secret_arn
+      }
+
+  state_management:
+    backend: "Remote state — S3 + DynamoDB (AWS), Azure Blob (Azure), GCS (GCP)"
+    locking: "Always enabled — prevents concurrent apply conflicts"
+    encryption: "State encrypted at rest — enforced by backend config"
+    example_aws: |
+      terraform {
+        backend "s3" {
+          bucket         = "flair-terraform-state-${var.account_id}"
+          key            = "flair/${var.environment}/terraform.tfstate"
+          region         = "eu-west-1"
+          encrypt        = true
+          dynamodb_table = "flair-terraform-locks"
+        }
+      }
+
+  versioning:
+    rule: "Pin all provider versions. Pin module versions when referencing remote modules."
+    example: |
+      terraform {
+        required_version = ">= 1.7"
+        required_providers {
+          aws = {
+            source  = "hashicorp/aws"
+            version = "~> 5.40"  # Minor updates allowed, not major
+          }
+        }
+      }
+
+---
+
+cloud_native_identity:
+
+  aws:
+    pattern: "IAM Roles for Service Accounts (IRSA) for EKS workloads"
+    rule: "Never use long-lived access keys. Use IAM roles with OIDC federation."
+    example: |
+      resource "aws_iam_role" "flair_core" {
+        name = "flair-core-${var.environment}"
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect = "Allow"
+            Principal = { Federated = aws_iam_openid_connect_provider.eks.arn }
+            Action = "sts:AssumeRoleWithWebIdentity"
+            Condition = {
+              StringEquals = {
+                "${local.oidc_provider}:sub" = "system:serviceaccount:flair:flair-core"
+              }
+            }
+          }]
+        })
+      }
+
+  azure:
+    pattern: "Managed Identity (User-Assigned) for AKS workloads"
+    rule: "Never use client secrets. Use Workload Identity Federation."
+
+  gcp:
+    pattern: "Workload Identity for GKE workloads"
+    rule: "Never use service account keys. Use Workload Identity binding."
+
+---
+
+naming_convention:
+
+  resources: |
+    # Format: {product}-{component}-{environment}[-{suffix}]
+    # flair-core-prod
+    # flair-agent-staging
+    # flair-db-prod-primary
+
+  locals: |
+    locals {
+      name_prefix = "flair-${var.component}-${var.environment}"
+      common_tags = {
+        Product     = "flair"
+        Component   = var.component
+        Environment = var.environment
+        ManagedBy   = "terraform"
+        Repository  = "flair-security/flair-terraform-${var.cloud}"
+      }
+    }
+
+  rule: "All resources use local.name_prefix. All resources have common_tags."
+  gate_impact: "Gate 2 score -5 per resource missing common_tags"
+
+---
+
+security_rules:
+
+  no_public_db:
+    rule: "Database instances are never publicly accessible"
+    check: |
+      # In all DB resources
+      publicly_accessible = false
+
+  tls_everywhere:
+    rule: "All load balancers, RDS, and API endpoints enforce TLS"
+    aws_alb: |
+      resource "aws_lb_listener" "https" {
+        protocol          = "HTTPS"
+        ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+        certificate_arn   = var.acm_certificate_arn
+      }
+      # HTTP listener redirects to HTTPS — never serves traffic
+
+  least_privilege:
+    rule: "IAM policies follow least privilege — specific actions on specific resources"
+    wrong: |
+      actions   = ["*"]          # Never wildcard actions
+      resources = ["*"]          # Never wildcard resources on sensitive services
+    correct: |
+      actions   = ["s3:GetObject", "s3:PutObject"]
+      resources = [aws_s3_bucket.flair_state.arn]

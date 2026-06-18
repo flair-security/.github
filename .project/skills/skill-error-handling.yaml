@@ -1,0 +1,190 @@
+skill:
+  id: flair-error-handling
+  version: "1.0"
+  name: "Go Error Handling"
+  description: >
+    Defines the error handling standard for all Go repos in FLAIR.
+    Covers wrapping, sentinel errors, typed errors, logging discipline, and forbidden patterns.
+    Loaded for every Go implementation — priority 1, no trigger filter.
+  applies_to:
+    - flair-agent
+    - flair-core
+    - flair-sdk-go
+  loaded_by:
+    - Go_Software_Architect
+    - Dev_Agent
+
+---
+
+rules:
+
+  never_ignore:
+    rule: "Every returned error must be handled. No assignment to _."
+    wrong: |
+      store.Save(ctx, flow)        // return value silently discarded
+      _ = store.Save(ctx, flow)    // explicit discard — forbidden
+    correct: |
+      if err := store.Save(ctx, flow); err != nil {
+          return fmt.Errorf("ingest: save flow: %w", err)
+      }
+    gate_impact: "Gate 2 score -20 per ignored error found in diff"
+
+  wrap_with_context:
+    rule: >
+      Always wrap errors with the operation context using %w.
+      The wrapping message identifies the package, function, and relevant IDs.
+      Never wrap twice for the same error at the same stack level.
+    format: "<package>: <operation> <relevant_id>: %w"
+    correct: |
+      if err := r.db.Query(ctx, sql, agentID); err != nil {
+          return fmt.Errorf("flow repo: find by agent %s: %w", agentID, err)
+      }
+    wrong: |
+      return err              // no context — forbidden
+      return errors.New("error occurred")  // loses original — forbidden
+    rule_boundary: >
+      At package boundaries (service → handler, service → repo), wrap.
+      Inside the same function, propagate the already-wrapped error directly.
+
+  sentinel_errors:
+    rule: >
+      Define sentinel errors for expected conditions callers must handle differently.
+      Always use errors.Is() to check, never == on error strings.
+    pattern: |
+      // domain/errors.go
+      var (
+          ErrFlowNotFound   = errors.New("flow not found")
+          ErrAgentNotEnrolled = errors.New("agent not enrolled")
+          ErrScoreConflict   = errors.New("score conflict: duplicate flow window")
+      )
+    usage: |
+      flow, err := repo.FindByID(ctx, id)
+      if errors.Is(err, domain.ErrFlowNotFound) {
+          return nil, ErrFlowNotFound  // re-surface as domain error
+      }
+      if err != nil {
+          return nil, fmt.Errorf("flow service: find flow %s: %w", id, err)
+      }
+
+  typed_errors:
+    rule: >
+      Use typed errors when callers need to inspect structured error data
+      (e.g. validation errors returning which fields failed).
+    pattern: |
+      type ValidationError struct {
+          Field   string
+          Message string
+      }
+
+      func (e *ValidationError) Error() string {
+          return fmt.Sprintf("validation: %s — %s", e.Field, e.Message)
+      }
+
+      // Check with errors.As
+      var ve *ValidationError
+      if errors.As(err, &ve) {
+          respond.BadRequest(w, ve.Field, ve.Message)
+      }
+
+---
+
+logging_discipline:
+
+  rule: >
+    Log errors at the point of handling, not at the point of creation.
+    Do not log an error and return it — the caller will log it again.
+  correct: |
+    // infrastructure layer: log and absorb if truly non-fatal
+    if err := metrics.Push(ctx, snap); err != nil {
+        slog.WarnContext(ctx, "metrics push failed", "error", err)
+        // do not return — non-fatal
+    }
+
+    // service layer: return, do not log
+    if err := r.flowRepo.Save(ctx, tx, flow); err != nil {
+        return fmt.Errorf("flow service: save: %w", err)  // no log here
+    }
+
+    // handler (top boundary): log and respond
+    flow, err := h.flowService.IngestFlow(r.Context(), cmd)
+    if err != nil {
+        slog.ErrorContext(r.Context(), "ingest flow failed", "error", err, "agent_id", cmd.AgentID)
+        h.respond.Error(w, err)
+        return
+    }
+  wrong: |
+    // logs AND returns — error will be logged twice
+    if err := r.flowRepo.Save(ctx, tx, flow); err != nil {
+        log.Printf("save failed: %v", err)
+        return fmt.Errorf("save: %w", err)
+    }
+
+  structured_logging:
+    rule: "Use slog (Go 1.21+). Always pass context. Error as slog attribute, not string format."
+    correct: |
+      slog.ErrorContext(ctx, "scoring failed",
+          "agent_id", flow.AgentID,
+          "flow_id", flow.ID,
+          "error", err,
+      )
+    wrong: |
+      log.Printf("scoring failed for agent %s: %v", flow.AgentID, err)
+
+---
+
+panic_policy:
+  rule: >
+    panic() is forbidden in production code paths.
+    Acceptable only in init() for missing required config that makes startup impossible,
+    and in test helpers.
+  correct: |
+    // main.go startup — acceptable
+    cfg, err := config.Load()
+    if err != nil {
+        log.Fatalf("startup: load config: %v", err)  // os.Exit(1), not panic
+    }
+  wrong: |
+    func (s *Scorer) Score(flow *domain.Flow) int {
+        if flow == nil {
+            panic("nil flow")  // forbidden in production — return error instead
+        }
+    }
+
+---
+
+error_http_mapping:
+  description: "Standard mapping from domain errors to HTTP status codes — lives in api/respond/"
+  table:
+    - domain: "ErrFlowNotFound, ErrAgentNotEnrolled"
+      http: "404 Not Found"
+    - domain: "ValidationError"
+      http: "400 Bad Request"
+    - domain: "ErrScoreConflict"
+      http: "409 Conflict"
+    - domain: "context.DeadlineExceeded, context.Canceled"
+      http: "503 Service Unavailable"
+    - domain: "all others"
+      http: "500 Internal Server Error — never expose internal message to client"
+  pattern: |
+    func (r *Responder) Error(w http.ResponseWriter, err error) {
+        var ve *domain.ValidationError
+        switch {
+        case errors.Is(err, domain.ErrFlowNotFound):
+            r.JSON(w, http.StatusNotFound, errorBody("not_found", err.Error()))
+        case errors.As(err, &ve):
+            r.JSON(w, http.StatusBadRequest, errorBody("validation_error", ve.Message))
+        default:
+            slog.Error("unhandled error", "error", err)
+            r.JSON(w, http.StatusInternalServerError, errorBody("internal_error", "internal server error"))
+        }
+    }
+
+---
+
+gate_checklist:
+  gate_2:
+    - "No _ ignoring a returned error"
+    - "Every error wrapped with context at package boundary"
+    - "errors.Is / errors.As used — no string comparison on error messages"
+    - "No duplicate log + return for the same error"
+    - "No panic() in production code paths"

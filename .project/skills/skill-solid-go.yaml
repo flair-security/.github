@@ -1,0 +1,203 @@
+skill:
+  id: flair-solid-go
+  version: "1.0"
+  name: "SOLID & Go Patterns"
+  description: >
+    Enforces SOLID principles and idiomatic Go patterns across flair-agent,
+    flair-core and flair-sdk-go. Loaded by Go Software Architect and Dev Agent
+    before any Go implementation or review.
+  applies_to:
+    - flair-agent
+    - flair-core
+    - flair-sdk-go
+  loaded_by:
+    - Go_Software_Architect
+    - Dev_Agent
+
+---
+
+principles:
+
+  single_responsibility:
+    rule: >
+      Each package, type and function has exactly one reason to change.
+      A file that imports both a network package and a storage package is a signal violation.
+    flair_examples:
+      - "flair-agent/collector: captures flows only — no scoring, no storage"
+      - "flair-core/scoring: scores only — no graph queries, no API handlers"
+    violation_signals:
+      - "Function longer than 40 lines"
+      - "File with more than 3 different import groups (net + db + api in one file)"
+      - "Type name containing 'And' (e.g. CollectorAndScorer)"
+    gate_impact: "Gate 2 score -10 per violation detected in diff"
+
+  open_closed:
+    rule: >
+      Types are open for extension, closed for modification.
+      New behaviour is added via new implementations of existing interfaces,
+      not by modifying existing types.
+    flair_examples:
+      - "Adding flair-agent-windows: implement Collector interface, do not modify EBPFCollector"
+      - "Adding NATS support: implement IngestQueue interface, do not modify the REST ingestor"
+    pattern: "Interface + multiple implementations > switch/if on type"
+    gate_impact: "Gate 1 score -15 if new feature modifies existing type instead of extending interface"
+
+  liskov_substitution:
+    rule: >
+      Any implementation of an interface must be substitutable for any other
+      without breaking callers. Implementations must not narrow preconditions
+      or widen postconditions relative to the interface contract.
+    flair_examples:
+      - "SQLiteGraphStore and PostgresGraphStore must return identical errors for identical invalid inputs"
+      - "All Collector implementations must emit Flow structs with identical zero-value semantics for optional fields"
+    check: "If implementation A works in production and implementation B fails the same test suite, LSP is violated"
+
+  interface_segregation:
+    rule: >
+      Interfaces are small and focused. Callers only depend on the methods they use.
+      No 'fat interfaces' that force implementors to stub unused methods.
+    flair_examples:
+      - "GraphStore is split: GraphReader (queries only) and GraphWriter (mutations only) — handlers that only read use GraphReader"
+      - "Collector emits only Flow structs — it does not expose Start/Stop/Configure in one interface if some callers only need the channel"
+    max_interface_methods: 5
+    gate_impact: "Gate 1 score -10 if new interface has > 5 methods without documented justification"
+
+  dependency_inversion:
+    rule: >
+      High-level modules depend on abstractions, not on concretions.
+      All dependencies are injected — never instantiated inside the dependent type.
+    flair_patterns:
+      constructor_injection: >
+        func NewScorer(store GraphReader, clock Clock) *Scorer
+        // NOT: func NewScorer() *Scorer { store = NewSQLiteStore() }
+      no_global_state: >
+        No package-level var holding a connection, store or config.
+        Everything passed as parameter or via context.
+    gate_impact: "Gate 2 score -15 if new type instantiates its own dependencies"
+
+---
+
+patterns:
+
+  repository:
+    purpose: "Isolate data access logic from business logic"
+    when_to_use: "Any interaction with GraphStore (PostgreSQL/AGE) or flow storage"
+    structure: |
+      // Interface in domain package — no storage import
+      type FlowRepository interface {
+          Save(ctx context.Context, flow *domain.Flow) error
+          FindByID(ctx context.Context, id uuid.UUID) (*domain.Flow, error)
+          FindCrossZone(ctx context.Context, from, to string) ([]*domain.Flow, error)
+      }
+
+      // Implementation in infrastructure package
+      type PostgresFlowRepository struct {
+          db *pgx.Pool
+      }
+
+      func (r *PostgresFlowRepository) Save(ctx context.Context, flow *domain.Flow) error { ... }
+    anti_pattern: "Calling pgx or AGE directly in a handler or scorer — always go through the repository"
+
+  factory:
+    purpose: "Centralise complex object construction, especially for collectors and stores"
+    when_to_use: "Creating Collector, GraphStore, or AuthProvider implementations"
+    structure: |
+      func NewCollector(cfg Config) (Collector, error) {
+          switch cfg.Platform {
+          case "linux":
+              return ebpf.NewEBPFCollector(cfg.EBPFConfig)
+          case "windows":
+              return etw.NewETWCollector(cfg.ETWConfig)
+          default:
+              return nil, fmt.Errorf("unsupported platform: %s", cfg.Platform)
+          }
+      }
+    rule: "Factory functions return interfaces, never concrete types"
+
+  strategy:
+    purpose: "Swap algorithms or behaviours at runtime without changing callers"
+    when_to_use: "Scoring rules, protocol detection strategies, auth providers"
+    structure: |
+      type ScoringStrategy interface {
+          Score(flow *domain.Flow) int
+      }
+
+      type TLSScorer struct{}
+      func (s *TLSScorer) Score(flow *domain.Flow) int { ... }
+
+      type ProtocolScorer struct{}
+      func (s *ProtocolScorer) Score(flow *domain.Flow) int { ... }
+
+      // Composed scorer — strategy pattern
+      type CompositeScorer struct {
+          strategies []ScoringStrategy
+      }
+    flair_example: "flair-rules community rules are loaded as ScoringStrategy implementations"
+
+  observer:
+    purpose: "Decouple flow event producers from consumers (webhooks, metrics, alerts)"
+    when_to_use: "flair-core event emission — new flow detected, alert triggered, anomaly found"
+    structure: |
+      type FlowEventHandler interface {
+          OnFlow(ctx context.Context, event FlowEvent)
+      }
+
+      type EventBus struct {
+          handlers []FlowEventHandler
+      }
+
+      func (b *EventBus) Register(h FlowEventHandler) { ... }
+      func (b *EventBus) Emit(ctx context.Context, e FlowEvent) { ... }
+
+  circuit_breaker:
+    purpose: "Prevent cascade failures when flair-core is unreachable from agents"
+    when_to_use: "Agent → core communication, especially in IngestQueue implementations"
+    rule: >
+      Agents must buffer locally (in-memory, then disk) when flair-core is unreachable.
+      Circuit opens after 3 consecutive failures, half-opens after 30s.
+      Never drop flows — queue them.
+
+---
+
+go_idioms:
+
+  error_handling:
+    rule: "Errors are values. Wrap with context. Never ignore."
+    correct: |
+      if err := store.Save(ctx, flow); err != nil {
+          return fmt.Errorf("scoring: save flow %s: %w", flow.AgentID, err)
+      }
+    wrong: |
+      store.Save(ctx, flow)  // ignored
+      if err != nil { return err }  // no context added
+
+  context_propagation:
+    rule: "context.Context is always the first parameter. Never store in struct."
+    correct: "func (r *Repo) FindByID(ctx context.Context, id uuid.UUID) (*Flow, error)"
+    wrong: "func (r *Repo) FindByID(id uuid.UUID) (*Flow, error)"
+
+  goroutines:
+    rule: "Never start a goroutine without knowing who owns its lifetime."
+    pattern: |
+      // Always use errgroup or explicit WaitGroup
+      g, ctx := errgroup.WithContext(ctx)
+      g.Go(func() error { return collector.Start(ctx) })
+      g.Go(func() error { return ingestor.Run(ctx) })
+      return g.Wait()
+
+  testing:
+    rule: "Table-driven tests. Test name includes AC ID."
+    pattern: |
+      func TestEBPFCollector_AC42_01_DetectsGRPC(t *testing.T) {
+          tests := []struct {
+              name    string
+              input   Packet
+              want    string
+          }{
+              {"port 443 with HTTP2 preface", grpcPacket, "gRPC"},
+              {"port 443 with TLS only", tlsOnlyPacket, "HTTPS"},
+          }
+          for _, tt := range tests {
+              t.Run(tt.name, func(t *testing.T) { ... })
+          }
+      }

@@ -1,0 +1,168 @@
+skill:
+  id: flair-performance
+  version: "1.0"
+  name: "Performance & Profiling"
+  description: >
+    Governs Go benchmark conventions, pprof profiling, PostgreSQL/AGE query optimisation,
+    connection pool tuning and flair-agent CPU/memory constraints.
+    Performance regressions are caught at Gate 3 — not in production.
+  applies_to:
+    - flair-agent
+    - flair-core
+  loaded_by:
+    - Go_Software_Architect
+    - Database_Architect
+    - Dev_Agent
+
+---
+
+go_benchmarks:
+
+  convention: |
+    // Benchmark functions follow the same AC naming convention as tests
+    // BenchmarkXxx_AC{id}_{description}
+    func BenchmarkFlowIngestion_AC55_01_BatchOf1000Flows(b *testing.B) {
+        repo := setupBenchRepo(b)
+        flows := generateFlows(1000)
+        b.ResetTimer()
+        for i := 0; i < b.N; i++ {
+            _ = repo.SaveBatch(context.Background(), flows)
+        }
+    }
+
+  targets:
+    flow_ingestion_batch_1000: "< 200ms p99"
+    api_get_flows_page_50:     "< 50ms p99"
+    scoring_single_flow:       "< 1ms"
+    graph_cross_zone_query:    "< 500ms p99 on 100k flows"
+    agent_flow_capture:        "< 0.5% CPU at 1000 flows/sec"
+
+  ci_integration: |
+    # Run benchmarks in CI — fail if regression > 20% vs baseline
+    - name: Run benchmarks
+      run: |
+        go test -bench=. -benchmem -run=^$ ./... \
+          | tee benchmark-current.txt
+    - name: Compare with baseline
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        tool: go
+        output-file-path: benchmark-current.txt
+        alert-threshold: 120%   # Fail if 20% slower than baseline
+        fail-on-alert: true
+
+---
+
+pprof:
+
+  endpoints: |
+    // Always available in debug builds — never in production without auth
+    // flair-core exposes pprof behind /debug/pprof/ authenticated endpoint
+    import _ "net/http/pprof"
+
+    router.GET("/debug/pprof/*profile",
+        authMiddleware.Require("admin"),  // Never expose without auth
+        gin.WrapH(http.DefaultServeMux),
+    )
+
+  profiling_commands: |
+    # CPU profile — 30 second capture
+    go tool pprof -http=:8081 http://localhost:8080/debug/pprof/profile?seconds=30
+
+    # Memory profile
+    go tool pprof -http=:8081 http://localhost:8080/debug/pprof/heap
+
+    # Goroutine dump (check for leaks)
+    curl http://localhost:8080/debug/pprof/goroutine?debug=1
+
+---
+
+postgresql_optimisation:
+
+  explain_rule: >
+    Any query on a table > 100k rows must have EXPLAIN ANALYZE documented
+    in the PR description before merge.
+    gate_impact: "Gate 3 score -10 per missing EXPLAIN ANALYZE on qualifying query"
+
+  index_strategy:
+    flow_queries: |
+      -- Most common query patterns and their supporting indexes
+      -- Pattern 1: Latest flows per agent
+      CREATE INDEX CONCURRENTLY idx_flows_agent_captured
+        ON flows (agent_id, captured_at DESC)
+        WHERE deleted_at IS NULL;
+
+      -- Pattern 2: Unencrypted flow count (dashboard widget)
+      CREATE INDEX CONCURRENTLY idx_flows_unencrypted
+        ON flows (captured_at DESC)
+        WHERE encrypted = false AND deleted_at IS NULL;
+
+      -- Pattern 3: JSONB metadata filter
+      CREATE INDEX CONCURRENTLY idx_flows_zone
+        ON flows ((metadata->>'zone'), captured_at DESC)
+        WHERE deleted_at IS NULL;
+
+  age_query_optimisation: |
+    -- AGE graph queries can be slow on large graphs
+    -- Always use LIMIT in exploratory queries
+    -- Use MATCH with specific start node when possible — avoid full graph scans
+
+    -- BAD: full graph scan
+    SELECT * FROM cypher('flair', $$
+      MATCH (a)-[f:FLOW]->(b) RETURN a, f, b
+    $$) AS (a agtype, f agtype, b agtype);
+
+    -- GOOD: start from specific node
+    SELECT * FROM cypher('flair', $$
+      MATCH (src:Service {id: $src_id})-[f:FLOW]->(dst:Service)
+      RETURN src, f, dst
+      LIMIT 100
+    $$, $1) AS (src agtype, f agtype, dst agtype);
+
+  vacuum_strategy: |
+    -- Flows table receives high INSERT volume — tune autovacuum
+    ALTER TABLE flows SET (
+      autovacuum_vacuum_scale_factor = 0.01,  -- Vacuum at 1% dead tuples
+      autovacuum_analyze_scale_factor = 0.005
+    );
+
+---
+
+agent_constraints:
+
+  memory_budget: |
+    // flair-agent memory targets
+    // Measured via /proc/self/status VmRSS in periodic log
+    const (
+        TargetIdleMemoryMB   = 32   // RSS at idle
+        MaxOperationalMemory = 128  // RSS under full load
+        BufferMaxSizeMB      = 100  // Local flow buffer cap
+    )
+
+  cpu_budget: |
+    // 0.5% CPU target at 1000 flows/sec
+    // Measured in CI benchmark — if exceeded, profile and optimise before merge
+    // Key optimisations already applied:
+    // - JA3 computed once per connection (cached by src_ip:src_port)
+    // - Protocol detection on first packet only — no stream reassembly in eBPF
+    // - Batch sender (1000 flows or 10s) — not 1 HTTP request per flow
+
+  alloc_rule: >
+    Avoid allocations in the hot path (packet processing loop).
+    Use sync.Pool for reusable Flow structs and byte buffers.
+    Profile with -benchmem before claiming a path is allocation-free.
+
+  pool_pattern: |
+    var flowPool = sync.Pool{
+        New: func() any { return &domain.Flow{} },
+    }
+
+    func (c *EBPFCollector) processPacket(raw []byte) {
+        f := flowPool.Get().(*domain.Flow)
+        defer func() {
+            *f = domain.Flow{}  // Reset before returning to pool
+            flowPool.Put(f)
+        }()
+        // ... populate f from raw bytes
+        c.emit(*f)  // Copy by value to emit channel
+    }

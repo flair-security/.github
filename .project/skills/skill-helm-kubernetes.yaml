@@ -1,0 +1,198 @@
+skill:
+  id: flair-helm-kubernetes
+  version: "1.0"
+  name: "Helm Chart & Kubernetes Deployment"
+  description: >
+    Governs Helm chart design, DaemonSet configuration, Pod Security Admission,
+    RBAC and values.yaml structure for flair-helm.
+  applies_to:
+    - flair-helm
+    - flair-agent-k8s
+  loaded_by:
+    - Kubernetes_Helm_Expert
+    - Dev_Agent
+
+---
+
+chart_structure: |
+  flair-helm/
+    Chart.yaml
+    values.yaml           # Defaults — documented, never hardcoded secrets
+    templates/
+      _helpers.tpl
+      agent/
+        daemonset.yaml
+        serviceaccount.yaml
+        clusterrole.yaml
+        clusterrolebinding.yaml
+        configmap.yaml
+      core/
+        deployment.yaml
+        service.yaml
+        ingress.yaml
+        hpa.yaml
+        pdb.yaml
+      ui/
+        deployment.yaml
+        service.yaml
+        ingress.yaml
+      shared/
+        networkpolicy.yaml
+        secrets.yaml      # External secrets only — no values in template
+
+---
+
+daemonset_agent: |
+  # templates/agent/daemonset.yaml
+  apiVersion: apps/v1
+  kind: DaemonSet
+  metadata:
+    name: {{ include "flair.fullname" . }}-agent
+  spec:
+    selector:
+      matchLabels:
+        app: flair-agent
+    template:
+      spec:
+        serviceAccountName: {{ include "flair.fullname" . }}-agent
+        hostNetwork: true     # Required: capture host network flows
+        hostPID: true         # Required: process attribution
+        dnsPolicy: ClusterFirstWithHostNet
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 65534
+          seccompProfile:
+            type: RuntimeDefault
+        containers:
+          - name: agent
+            image: "{{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag }}"
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
+                add: [NET_ADMIN, SYS_PTRACE]
+            volumeMounts:
+              - name: bpf-fs
+                mountPath: /sys/fs/bpf
+              - name: proc
+                mountPath: /host/proc
+                readOnly: true
+              - name: buffer
+                mountPath: /var/lib/flair-agent
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                cpu: 200m
+                memory: 128Mi
+        volumes:
+          - name: bpf-fs
+            hostPath: { path: /sys/fs/bpf, type: Directory }
+          - name: proc
+            hostPath: { path: /proc, type: Directory }
+          - name: buffer
+            emptyDir:
+              sizeLimit: 100Mi
+        tolerations:
+          - operator: Exists  # Run on all nodes including control plane
+        priorityClassName: system-node-critical
+
+---
+
+rbac: |
+  # templates/agent/clusterrole.yaml
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: {{ include "flair.fullname" . }}-agent
+  rules:
+    - apiGroups: [""]
+      resources: [pods, nodes]
+      verbs: [get, list, watch]  # Read-only — agent never modifies cluster state
+
+---
+
+pod_security_admission: |
+  # Namespace label — enforced at cluster level
+  # flair components run in 'restricted' PSA profile except agent (needs NET_ADMIN)
+  namespace_labels:
+    flair-core: pod-security.kubernetes.io/enforce: restricted
+    flair-ui:   pod-security.kubernetes.io/enforce: restricted
+    flair-agent: pod-security.kubernetes.io/enforce: privileged  # Unavoidable for eBPF
+
+---
+
+values_yaml: |
+  # values.yaml — all defaults documented
+  global:
+    image:
+      pullPolicy: IfNotPresent
+    tlsSecretName: flair-tls  # External secret (cert-manager or manual)
+
+  agent:
+    image:
+      repository: ghcr.io/flair-security/flair-agent
+      tag: ""  # Defaults to Chart.appVersion
+    core:
+      url: ""  # Required — flair-core service URL
+      enrollmentToken: ""  # Set via --set or external secret
+
+  core:
+    image:
+      repository: ghcr.io/flair-security/flair-core
+      tag: ""
+    replicaCount: 2
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    database:
+      url: ""  # Required — injected via secret
+    oidc:
+      issuerUrl: ""
+      clientId: ""
+      clientSecret: ""  # Injected via secret
+
+  ui:
+    image:
+      repository: ghcr.io/flair-security/flair-ui
+      tag: ""
+    replicaCount: 2
+
+  ingress:
+    enabled: true
+    className: nginx
+    annotations: {}
+    hosts:
+      - host: flair.example.com
+        paths: [{ path: /, pathType: Prefix }]
+    tls:
+      - secretName: flair-tls
+        hosts: [flair.example.com]
+
+---
+
+network_policy: |
+  # templates/shared/networkpolicy.yaml
+  # flair-agent → flair-core only (no internet egress)
+  apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    name: flair-agent-egress
+  spec:
+    podSelector:
+      matchLabels: { app: flair-agent }
+    policyTypes: [Egress]
+    egress:
+      - to:
+          - podSelector:
+              matchLabels: { app: flair-core }
+        ports:
+          - protocol: TCP
+            port: 8080
+      - to:  # Allow DNS
+          - namespaceSelector: {}
+        ports:
+          - protocol: UDP
+            port: 53

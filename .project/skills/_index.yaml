@@ -1,0 +1,357 @@
+skill:
+  id: flair-skills-index
+  version: "2.0"
+  name: "Skills Index"
+  description: >
+    Index of all FLAIR skills and their loading rules.
+    The Orchestrator reads this index to determine which skills to inject
+    into each agent's context before dispatching a US.
+    Lives at .project/skills/_index.yaml
+
+---
+
+skills:
+
+  # ── CORE ENGINEERING ──────────────────────────────────────────────────────
+
+  - id: flair-solid-go
+    file: .project/skills/skill-solid-go.yaml
+    priority: 1
+    load_when:
+      repos: [flair-agent, flair-core, flair-sdk-go, flair-sdk-python]
+      agents: [Go_Software_Architect, Dev_Agent]
+      triggers:
+        - "any Go file created or modified in diff"
+        - "new interface defined"
+        - "new package created"
+
+  - id: flair-go-service-layer
+    file: .project/skills/skill-go-service-layer.yaml
+    priority: 1
+    load_when:
+      repos: [flair-core]
+      agents: [Go_Software_Architect, Dev_Agent]
+      triggers:
+        - "any file in application/services/ created or modified"
+        - "new handler created in api/handlers/"
+        - "new use case defined"
+
+  - id: flair-error-handling
+    file: .project/skills/skill-error-handling.yaml
+    priority: 1
+    load_when:
+      repos: [flair-agent, flair-core, flair-sdk-go]
+      agents: [Go_Software_Architect, Dev_Agent]
+      triggers:
+        - "always — loaded for every Go implementation"
+
+  # ── DATABASE ──────────────────────────────────────────────────────────────
+
+  - id: flair-bdd-architecture
+    file: .project/skills/skill-bdd-architecture.yaml
+    priority: 1
+    load_when:
+      repos: [flair-core]
+      agents: [Database_Architect, Dev_Agent]
+      triggers:
+        - "any file in infrastructure/store/ created or modified"
+        - "new migration file created"
+        - "Flow struct modified"
+        - "GraphStore interface modified"
+        - "any AGE/Cypher query"
+
+  # ── AGENT / EBPF ──────────────────────────────────────────────────────────
+
+  - id: flair-ebpf-architecture
+    file: .project/skills/skill-ebpf-architecture.yaml
+    priority: 1
+    load_when:
+      repos: [flair-agent, flair-agent-k8s]
+      agents: [eBPF_Linux_Kernel_Expert, Dev_Agent]
+      triggers:
+        - "any .c or .h file created or modified"
+        - "Collector interface modified"
+        - "any file in collector/ package"
+        - "capability or kernel version check"
+        - "ring buffer or eBPF map change"
+
+  # ── FRONTEND ──────────────────────────────────────────────────────────────
+
+  - id: flair-angular-security
+    file: .project/skills/skill-angular-security.yaml
+    priority: 1
+    load_when:
+      repos: [flair-ui]
+      agents: [Angular_Frontend_Expert, Dev_Agent]
+      triggers:
+        - "any .ts or .html file created or modified"
+        - "new Angular component or service"
+        - "D3.js rendering code"
+    also_load_for:
+      repos: [flair-agent, flair-core, flair-ui]
+      agents: [Application_Security_Expert, Red_Team_Expert]
+      triggers:
+        - "security AC challenge (all repos)"
+        - "any AC-{id}-SEC-{n} written or reviewed"
+
+  - id: flair-ux-ui-design
+    file: .project/skills/skill-ux-ui-design.yaml
+    priority: 1
+    load_when:
+      repos: [flair-ui]
+      agents: [Angular_Frontend_Expert, Dev_Agent, QA_Expert]
+      triggers:
+        - "any new component, screen or interaction designed"
+        - "flow map rendering change"
+        - "dashboard layout change"
+        - "colour or typography change"
+
+  # ── API & AUTHENTICATION ──────────────────────────────────────────────────
+
+  - id: flair-api-design
+    file: .project/skills/skill-api-design.yaml
+    priority: 1
+    load_when:
+      repos: [flair-core]
+      agents: [Go_Software_Architect, Dev_Agent]
+      triggers:
+        - "new API endpoint created"
+        - "existing endpoint modified"
+        - "pagination change"
+        - "error format change"
+        - "webhook payload change"
+
+  - id: flair-authentication
+    file: .project/skills/skill-authentication.yaml
+    priority: 1
+    load_when:
+      repos: [flair-core, flair-agent, flair-agent-windows, flair-agent-k8s]
+      agents: [OIDC_IAM_Expert, Application_Security_Expert, Dev_Agent]
+      triggers:
+        - "any auth middleware change"
+        - "OIDC provider change"
+        - "agent enrollment flow change"
+        - "mTLS configuration change"
+        - "JWT validation change"
+
+  # ── SECURITY & SCORING ────────────────────────────────────────────────────
+
+  - id: flair-security-scoring
+    file: .project/skills/skill-security-scoring.yaml
+    priority: 1
+    load_when:
+      repos: [flair-core, flair-rules]
+      agents: [Application_Security_Expert, Dev_Agent]
+      triggers:
+        - "ScoringStrategy interface modified"
+        - "CompositeScorer change"
+        - "new scoring rule added"
+        - "alert generation logic change"
+        - "cross-zone detection change"
+
+  # ── QUALITY & TRACEABILITY ────────────────────────────────────────────────
+
+  - id: flair-ac-traceability
+    file: .project/skills/skill-ac-traceability.yaml
+    priority: 1
+    load_when:
+      repos: [flair-agent, flair-core, flair-ui, flair-agent-windows, flair-agent-k8s]
+      agents: [Dev_Agent, QA_Agent, PR_Review_Agent]
+      triggers:
+        - "always — loaded for every US implementation"
+        - "Gate 2 computation"
+        - "Gate 4 traceability check"
+
+  - id: flair-testing-strategy
+    file: .project/skills/skill-testing-strategy.yaml
+    priority: 1
+    load_when:
+      repos: [flair-agent, flair-core, flair-ui]
+      agents: [QA_Expert, Dev_Agent]
+      triggers:
+        - "new test file created"
+        - "test strategy question"
+        - "mock or stub design"
+        - "E2E spec written"
+        - "coverage below 80%"
+
+  # ── DEVOPS & DEPLOYMENT ───────────────────────────────────────────────────
+
+  - id: flair-devops-cicd
+    file: .project/skills/skill-devops-cicd.yaml
+    priority: 2
+    load_when:
+      repos: [flair-agent, flair-core, flair-ui, flair-helm]
+      agents: [DevSecOps_Expert, Dev_Agent]
+      triggers:
+        - "any .github/workflows/ file created or modified"
+        - "Dockerfile change"
+        - ".releaserc.json change"
+        - "sonar-project.properties change"
+        - ".golangci.yml change"
+        - ".semgrep/ rule change"
+
+  - id: flair-docker-deployment
+    file: .project/skills/skill-docker-deployment.yaml
+    priority: 2
+    load_when:
+      repos: [flair-agent, flair-core, flair-ui]
+      agents: [DevSecOps_Expert, Dev_Agent]
+      triggers:
+        - "Dockerfile created or modified"
+        - "docker-compose.dev.yml change"
+        - "container security context change"
+
+  - id: flair-helm-kubernetes
+    file: .project/skills/skill-helm-kubernetes.yaml
+    priority: 2
+    load_when:
+      repos: [flair-helm, flair-agent-k8s]
+      agents: [Kubernetes_Helm_Expert, Dev_Agent]
+      triggers:
+        - "any Helm template created or modified"
+        - "values.yaml change"
+        - "RBAC resource change"
+        - "DaemonSet configuration change"
+        - "NetworkPolicy change"
+
+  - id: flair-terraform-patterns
+    file: .project/skills/skill-terraform-patterns.yaml
+    priority: 2
+    load_when:
+      repos: [flair-terraform-aws, flair-terraform-azure, flair-terraform-gcp]
+      agents: [Terraform_Expert, Dev_Agent]
+      triggers:
+        - "any .tf file created or modified"
+        - "new Terraform module created"
+        - "IAM policy change"
+        - "state backend change"
+
+  # ── OBSERVABILITY & PERFORMANCE ───────────────────────────────────────────
+
+  - id: flair-observability
+    file: .project/skills/skill-observability.yaml
+    priority: 2
+    load_when:
+      repos: [flair-core, flair-agent]
+      agents: [DevSecOps_Expert, Dev_Agent]
+      triggers:
+        - "new log statement added"
+        - "new Prometheus metric added"
+        - "health endpoint change"
+        - "structured logging change"
+
+  - id: flair-performance
+    file: .project/skills/skill-performance.yaml
+    priority: 2
+    load_when:
+      repos: [flair-agent, flair-core]
+      agents: [Go_Software_Architect, Database_Architect, Dev_Agent]
+      triggers:
+        - "hot path code change (collector, ingestion, scoring)"
+        - "new DB query on large table"
+        - "benchmark added or modified"
+        - "memory allocation in packet processing loop"
+
+  # ── REGULATORY & COMPLIANCE ───────────────────────────────────────────────
+
+  - id: flair-regulatory
+    file: .project/skills/skill-regulatory.yaml
+    priority: 2
+    load_when:
+      repos: [flair-core, flair-agent, flair-ui]
+      agents: [Regulatory_Expert, Security_Agent, PO_Agent]
+      triggers:
+        - "US touching flow data retention"
+        - "audit log US"
+        - "data export US"
+        - "any AC challenge involving NIS2/DORA/GDPR"
+
+  # ── DOCUMENTATION & COMMUNITY ─────────────────────────────────────────────
+
+  - id: flair-documentation
+    file: .project/skills/skill-documentation.yaml
+    priority: 3
+    load_when:
+      repos: [flair-docs, flair-core, flair-agent]
+      agents: [Documentation_Expert, Dev_Agent]
+      triggers:
+        - "new public API endpoint"
+        - "new configuration parameter"
+        - "ADR required (Flow contract, interface change)"
+        - "user-facing UI change"
+        - "new deployment option"
+
+  - id: flair-community-governance
+    file: .project/skills/skill-community-governance.yaml
+    priority: 3
+    load_when:
+      repos: [flair-agent, flair-core, flair-ui, flair-docs, flair-rules]
+      agents: [Documentation_Expert, Scrum_Master, PO_Agent]
+      triggers:
+        - "CONTRIBUTING.md change"
+        - "SECURITY.md change"
+        - "issue template change"
+        - "PR template change"
+        - "license header question"
+        - "new dependency (license compliance)"
+
+---
+
+loading_protocol:
+
+  description: >
+    The Orchestrator injects skills into each agent's context before dispatch.
+    Skills are loaded eagerly — not lazily — based on the US metadata,
+    target repo and AC content. Priority 1 skills are always loaded for
+    the matching repo. Priority 2 and 3 are loaded when triggers match.
+
+  dispatch_context_example: |
+    agent_context:
+      us_id: 42
+      story_file: flair-docs/stories/us-42.md
+      target_repo: flair-core
+      skills_loaded:
+        - flair-solid-go           # priority 1 — Go repo
+        - flair-go-service-layer   # priority 1 — new use case in AC
+        - flair-error-handling     # priority 1 — always for Go
+        - flair-bdd-architecture   # priority 1 — store/ file in AC
+        - flair-api-design         # priority 1 — new endpoint in AC
+        - flair-authentication     # priority 1 — OIDC flow in AC
+        - flair-ac-traceability    # priority 1 — always
+        - flair-testing-strategy   # priority 1 — tests required
+        - flair-observability      # priority 2 — new log statement in AC
+        - flair-security-scoring   # priority 2 — scoring AC present
+        - flair-regulatory         # priority 2 — flow data AC present
+      gate_artifacts_path: docs/gates/us-42/
+
+  skill_conflict_rule: >
+    If two skills define conflicting rules for the same scenario,
+    the more specific skill wins. flair-ebpf-architecture overrides
+    flair-solid-go on eBPF C files. flair-bdd-architecture overrides
+    flair-solid-go on infrastructure/store/ files.
+
+  priority_levels:
+    1: "Always loaded for matching repo — foundational standards"
+    2: "Loaded when triggers match — contextual standards"
+    3: "Loaded for specific cross-cutting concerns — governance and docs"
+
+---
+
+skill_update_protocol:
+
+  rule: >
+    Skills are living documents. When a gate artifact documents a recurring
+    false positive or a missing rule, the relevant skill is updated in the
+    same PR as the code fix.
+
+  version_bump: >
+    Skill version is bumped on any meaningful rule change.
+    Minor wording fixes do not require a version bump.
+    A version bump triggers re-evaluation of any in-progress US
+    that loaded the previous version.
+
+  ownership: >
+    Each skill is owned by the agent role most qualified to maintain it.
+    Changes to skill files follow the same OneFlow + ACDD + gates process
+    as any other US — skills are not exempt from quality gates.

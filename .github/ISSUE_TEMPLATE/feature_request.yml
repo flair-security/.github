@@ -1,0 +1,97 @@
+name: Feature Request
+description: Suggest a new capability for FLAIR
+title: "[Feature] "
+labels: [enhancement, triage]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        FLAIR is built for security engineers, RSSIs and auditors.
+        The best feature requests describe a **security or compliance problem** to solve,
+        not a specific implementation.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which component would this affect?
+      options:
+        - flair-agent (Linux eBPF)
+        - flair-agent-windows
+        - flair-agent-k8s
+        - flair-core (API / server)
+        - flair-ui (web interface)
+        - flair-helm (Helm chart)
+        - flair-rules (detection rules)
+        - flair-sdk-go / flair-sdk-python
+        - New component
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: persona
+    attributes:
+      label: Who is this for?
+      options:
+        - RSSI / Security manager
+        - Security auditor
+        - Security engineer
+        - DevSecOps engineer
+        - System administrator
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: |
+        Describe the security or compliance problem you are trying to solve.
+        Example: "As a RSSI, I cannot currently see which flows cross our DMZ boundary
+        without TLS — I have to export raw data and analyse it manually."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: |
+        Describe what you would like FLAIR to do.
+        If you have a specific implementation in mind, describe it here.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+      description: What workarounds do you use today?
+
+  - type: dropdown
+    id: regulatory
+    attributes:
+      label: Is this related to a regulatory requirement?
+      options:
+        - NIS2
+        - DORA
+        - GDPR
+        - ISO 27001
+        - SOC 2
+        - Other regulatory requirement
+        - Not regulatory — operational security
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate
+          required: true
+        - label: This feature aligns with FLAIR's mission (flow mapping, protocol detection, TLS fingerprinting)
+          required: true

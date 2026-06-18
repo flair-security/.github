@@ -1,0 +1,81 @@
+name: Dev Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      us_id:
+        description: "User Story ID (e.g. 42)"
+        required: true
+        type: number
+      us_slug:
+        description: "US slug (e.g. grpc-detection)"
+        required: true
+        type: string
+      target_repo:
+        description: "Target repo (e.g. flair-core)"
+        required: true
+        type: string
+      gate1_score:
+        description: "Gate 1 score carried from Orchestrator"
+        required: false
+        default: "0"
+        type: string
+
+jobs:
+  implement:
+    name: "Dev Agent — US-${{ inputs.us_id }} (${{ inputs.target_repo }})"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout .github repo (org context + skills)
+        uses: actions/checkout@v4
+        with:
+          path: flair-security/.github
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          repository: flair-security/${{ inputs.target_repo }}
+          path: ${{ inputs.target_repo }}
+          token: ${{ secrets.GH_TOKEN_REPOS }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyyaml requests
+
+      - name: Build agent context (skill injection)
+        run: |
+          python3 flair-security/.github/scripts/build-agent-context.py \
+            --us "${{ inputs.us_id }}" \
+            --repo "${{ inputs.target_repo }}" \
+            --gate1-score "${{ inputs.gate1_score }}" \
+            --output /tmp/dev-agent-context.md
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN_REPOS }}
+          GITHUB_ORG: flair-security
+
+      - name: Run Dev Agent (Claude Code)
+        uses: anthropic/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GH_TOKEN_REPOS }}
+          prompt_file: "/tmp/dev-agent-context.md"
+          allowed_tools: "Bash,Read,Write,Edit,Glob,Grep"
+          max_turns: 120
+          working_directory: ${{ inputs.target_repo }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN_REPOS }}
+          US_ID: ${{ inputs.us_id }}
+          US_SLUG: ${{ inputs.us_slug }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+          GATE1_SCORE: ${{ inputs.gate1_score }}
+          GITHUB_ORG_CONTEXT_PATH: "../flair-security/.github"

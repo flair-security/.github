@@ -1,0 +1,238 @@
+skill:
+  id: flair-security-scoring
+  version: "1.0"
+  name: "Security Scoring Engine"
+  description: >
+    Defines the security scoring architecture for flair-core and flair-rules.
+    Covers ScoringStrategy interface, CompositeScorer, alert generation,
+    cross-zone detection, and community rule loading.
+    Loaded by Application Security Expert and Dev Agent for any scoring change.
+  applies_to:
+    - flair-core
+    - flair-rules
+  loaded_by:
+    - Application_Security_Expert
+    - Dev_Agent
+
+---
+
+architecture:
+
+  overview: >
+    Scoring is a pluggable pipeline. Each flow passes through a CompositeScorer
+    that aggregates scores from multiple ScoringStrategy implementations.
+    Strategies are stateless — all context comes from the flow and injected stores.
+    Community rules (flair-rules) are loaded as ScoringStrategy implementations at runtime.
+
+  diagram: |
+    Flow ingested
+        │
+        ▼
+    CompositeScorer
+        ├── TLSScorer           → score: 0–30
+        ├── ProtocolScorer      → score: 0–20
+        ├── CrossZoneScorer     → score: 0–40
+        ├── ProcessScorer       → score: 0–20
+        └── [community rules]   → score: variable
+        │
+        ▼
+    AggregatedScore (0–100+)
+        │
+        ├── score ≥ threshold → AlertGenerator → Alert persisted + webhook fired
+        └── score < threshold → flow stored, no alert
+
+---
+
+scoring_strategy:
+
+  interface: |
+    // application/ports/scorer.go
+    type ScoringStrategy interface {
+        // Score returns a delta to add to the flow's aggregate score.
+        // Negative deltas are valid (e.g. known-safe traffic reduces score).
+        // Returns 0 if strategy does not apply to this flow.
+        Score(ctx context.Context, flow *domain.Flow, graph GraphReader) (int, error)
+
+        // ID returns a stable, unique identifier for this strategy.
+        // Used in audit logs and gate artifacts.
+        ID() string
+
+        // Description returns a human-readable explanation of what this strategy scores.
+        Description() string
+    }
+
+  rules:
+    - "Strategies are stateless — no fields mutated during Score()"
+    - "Score() is idempotent — same input always produces same output"
+    - "Strategies never persist data — GraphReader is read-only"
+    - "Score range per strategy documented in Description()"
+    - "Error returned only for infrastructure failure, not for 'flow scores 0'"
+
+  example_implementation: |
+    // infrastructure/scoring/tls_scorer.go
+    type TLSScorer struct{}
+
+    func (s *TLSScorer) ID() string { return "flair-tls-scorer" }
+
+    func (s *TLSScorer) Description() string {
+        return "Adds score for unencrypted traffic on sensitive ports. Range: 0–30."
+    }
+
+    func (s *TLSScorer) Score(_ context.Context, flow *domain.Flow, _ GraphReader) (int, error) {
+        if flow.Encrypted {
+            return 0, nil
+        }
+        switch flow.DstPort {
+        case 443, 8443:
+            return 30, nil  // HTTPS port without TLS — critical
+        case 80, 8080:
+            return 10, nil  // plain HTTP — expected but scored
+        default:
+            return 5, nil
+        }
+    }
+
+---
+
+composite_scorer:
+
+  pattern: |
+    // application/services/composite_scorer.go
+    type CompositeScorer struct {
+        strategies []ScoringStrategy
+    }
+
+    func NewCompositeScorer(strategies ...ScoringStrategy) *CompositeScorer {
+        return &CompositeScorer{strategies: strategies}
+    }
+
+    func (c *CompositeScorer) Score(ctx context.Context, flow *domain.Flow, graph GraphReader) (int, []ScoringDetail, error) {
+        total := 0
+        details := make([]ScoringDetail, 0, len(c.strategies))
+
+        for _, s := range c.strategies {
+            delta, err := s.Score(ctx, flow, graph)
+            if err != nil {
+                return 0, nil, fmt.Errorf("composite scorer: strategy %s: %w", s.ID(), err)
+            }
+            if delta != 0 {
+                details = append(details, ScoringDetail{StrategyID: s.ID(), Delta: delta})
+            }
+            total += delta
+        }
+        return total, details, nil
+    }
+
+  scoring_detail: |
+    type ScoringDetail struct {
+        StrategyID  string
+        Delta       int
+        Explanation string  // optional — populated by verbose strategies
+    }
+
+---
+
+cross_zone_detection:
+
+  rule: >
+    A flow is cross-zone when SrcIP and DstIP belong to different security zones
+    as defined in the organisation's zone map (stored in the graph).
+    Cross-zone flows above the threshold trigger mandatory review alerts.
+
+  zones:
+    description: "Zones stored as node properties in Apache AGE graph"
+    examples:
+      - "dmz: public-facing services"
+      - "internal: internal workloads"
+      - "restricted: databases, secrets stores"
+      - "external: internet"
+
+  scorer: |
+    type CrossZoneScorer struct{}
+
+    func (s *CrossZoneScorer) Score(ctx context.Context, flow *domain.Flow, graph GraphReader) (int, error) {
+        srcZone, err := graph.ZoneForIP(ctx, flow.SrcIP)
+        if err != nil || srcZone == "" {
+            return 0, nil  // unknown zone — no score
+        }
+        dstZone, err := graph.ZoneForIP(ctx, flow.DstIP)
+        if err != nil || dstZone == "" {
+            return 0, nil
+        }
+        if srcZone == dstZone {
+            return 0, nil
+        }
+        // High-risk transitions
+        if dstZone == "restricted" && srcZone == "external" {
+            return 40, nil
+        }
+        if dstZone == "restricted" {
+            return 25, nil
+        }
+        return 10, nil  // any cross-zone
+    }
+
+---
+
+alert_generation:
+
+  threshold:
+    default: 50
+    rule: "Threshold configurable per organisation via admin UI — never hardcoded"
+    storage: "Stored in flair-core DB, loaded at startup, hot-reloadable via admin API"
+
+  alert_struct: |
+    type Alert struct {
+        ID           uuid.UUID
+        FlowID       uuid.UUID
+        Score        int
+        Details      []ScoringDetail
+        TriggeredAt  time.Time
+        Acknowledged bool
+        AckedBy      string
+        AckedAt      *time.Time
+    }
+
+  rules:
+    - "One alert per flow per scoring run — no duplicates"
+    - "Alert persisted in DB before webhook fires — if webhook fails, alert is not lost"
+    - "Webhook payload includes full ScoringDetail breakdown"
+    - "Alert acknowledgement creates an audit log entry (who, when)"
+
+---
+
+community_rules:
+
+  description: >
+    Rules from flair-rules repo are YAML files loaded at runtime as ScoringStrategy implementations.
+    The flair-core rule loader converts YAML rule definitions into ScoringStrategy.
+
+  rule_format: |
+    # flair-rules/rules/example-rule.yaml
+    rule:
+      id: flair-rule-unencrypted-db
+      description: "Detects unencrypted traffic to known database ports"
+      score: 35
+      conditions:
+        - field: encrypted
+          operator: eq
+          value: false
+        - field: dst_port
+          operator: in
+          value: [5432, 3306, 27017, 6379]
+
+  loader_contract:
+    rule: "Rule loader must implement ScoringStrategy interface — pluggable, hot-reloadable"
+    hot_reload: "POST /api/v1/admin/rules/reload — reloads rules without restart"
+    validation: "Rules validated at load time — malformed rule logs warning and is skipped, does not crash scorer"
+
+---
+
+gate_checklist:
+  gate_2:
+    - "ScoringStrategy interface unchanged or version-bumped if modified"
+    - "New scorer is stateless — no mutable fields"
+    - "Score() is deterministic for same input"
+    - "Alert persisted before webhook fires"
+    - "No hardcoded score threshold"
+    - "Cross-zone scorer uses graph ZoneForIP — no hardcoded IP ranges"

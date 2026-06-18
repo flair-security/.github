@@ -1,0 +1,278 @@
+skill:
+  id: flair-bdd-architecture
+  version: "1.0"
+  name: "Database Architecture — PostgreSQL + Apache AGE"
+  description: >
+    Governs all data modelling, schema design, graph query, and migration decisions
+    for flair-core. Loaded by the Database Architect and Dev Agent for any task
+    touching persistence, the GraphStore interface, or the Flow data model.
+  applies_to:
+    - flair-core
+  loaded_by:
+    - Database_Architect
+    - Dev_Agent
+
+---
+
+architecture:
+
+  overview: >
+    flair-core uses PostgreSQL as its single database engine, with Apache AGE
+    extension for graph traversal queries. The same Postgres instance handles:
+    - Relational data: users, agents, audit logs, configuration
+    - Graph data: flow nodes (services) and edges (flows) via AGE
+    This avoids operating two separate database systems while giving native
+    Cypher support for graph traversal (cross-zone path queries, dependency chains).
+
+  graphstore_interface:
+    rule: >
+      All database access goes through the GraphStore interface.
+      No package outside flair-core/infrastructure/store may import pgx or AGE directly.
+    layers: |
+      domain/         → Flow, Service, Alert structs (no DB imports)
+      application/    → use cases, call GraphStore interface only
+      infrastructure/
+        store/        → PostgresGraphStore implements GraphStore
+        migrations/   → SQL migration files only
+    gate_impact: "Gate 2 score -20 if pgx or AGE imported outside infrastructure/store/"
+
+  graphstore_split:
+    reader_interface: |
+      type GraphReader interface {
+          FindFlow(ctx context.Context, id uuid.UUID) (*domain.Flow, error)
+          FindFlowsByZone(ctx context.Context, zone string) ([]*domain.Flow, error)
+          FindCrossZoneFlows(ctx context.Context) ([]*domain.Flow, error)
+          FindServiceDependencies(ctx context.Context, serviceID string) ([]*domain.Service, error)
+          FindPathsBetweenZones(ctx context.Context, from, to string) ([][]domain.Node, error)
+      }
+    writer_interface: |
+      type GraphWriter interface {
+          SaveFlow(ctx context.Context, flow *domain.Flow) error
+          SaveService(ctx context.Context, svc *domain.Service) error
+          DeleteFlow(ctx context.Context, id uuid.UUID) error
+          UpsertMetadata(ctx context.Context, nodeID string, meta map[string]string) error
+      }
+    combined: |
+      type GraphStore interface {
+          GraphReader
+          GraphWriter
+      }
+
+---
+
+schema_design:
+
+  principles:
+    normalization: "3NF minimum for relational tables. Denormalize only with documented justification."
+    nullability: "Columns are NOT NULL by default. NULL is explicit and documented."
+    ids: "All primary keys are UUID v7 (time-ordered). No serial/integer PKs."
+    timestamps: "Every table has created_at TIMESTAMPTZ NOT NULL DEFAULT now() and updated_at."
+    soft_delete: "No hard deletes on flow or service data. Use deleted_at TIMESTAMPTZ."
+
+  relational_tables:
+    flows: |
+      CREATE TABLE flows (
+          id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          agent_id        UUID NOT NULL REFERENCES agents(id),
+          src_ip          INET NOT NULL,
+          src_port        INTEGER NOT NULL CHECK (src_port BETWEEN 1 AND 65535),
+          dst_ip          INET NOT NULL,
+          dst_port        INTEGER NOT NULL CHECK (dst_port BETWEEN 1 AND 65535),
+          direction       TEXT NOT NULL CHECK (direction IN ('outbound','inbound','internal')),
+          protocol        TEXT NOT NULL,
+          tls_version     TEXT,
+          tls_cipher      TEXT,
+          ja3_hash        TEXT,
+          encrypted       BOOLEAN NOT NULL DEFAULT false,
+          src_process     TEXT,
+          src_pid         INTEGER,
+          container_id    TEXT,
+          bytes_xfer      BIGINT NOT NULL DEFAULT 0,
+          metadata        JSONB NOT NULL DEFAULT '{}',
+          captured_at     TIMESTAMPTZ NOT NULL,
+          created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+          deleted_at      TIMESTAMPTZ
+      );
+
+      CREATE INDEX idx_flows_agent_id     ON flows(agent_id);
+      CREATE INDEX idx_flows_captured_at  ON flows(captured_at DESC);
+      CREATE INDEX idx_flows_dst_ip_port  ON flows(dst_ip, dst_port);
+      CREATE INDEX idx_flows_encrypted    ON flows(encrypted) WHERE encrypted = false;
+      CREATE INDEX idx_flows_metadata     ON flows USING GIN(metadata);
+
+    services: |
+      CREATE TABLE services (
+          id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name        TEXT NOT NULL,
+          ip          INET NOT NULL,
+          port        INTEGER,
+          metadata    JSONB NOT NULL DEFAULT '{}',
+          first_seen  TIMESTAMPTZ NOT NULL DEFAULT now(),
+          last_seen   TIMESTAMPTZ NOT NULL DEFAULT now(),
+          deleted_at  TIMESTAMPTZ,
+          UNIQUE (name, ip)
+      );
+
+    agents: |
+      CREATE TABLE agents (
+          id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          hostname        TEXT NOT NULL,
+          platform        TEXT NOT NULL CHECK (platform IN ('linux','windows','k8s')),
+          enrolled_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+          last_seen       TIMESTAMPTZ NOT NULL DEFAULT now(),
+          cert_thumbprint TEXT NOT NULL UNIQUE
+      );
+
+    audit_logs: |
+      CREATE TABLE audit_logs (
+          id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          actor       TEXT NOT NULL,
+          action      TEXT NOT NULL,
+          resource    TEXT NOT NULL,
+          outcome     TEXT NOT NULL CHECK (outcome IN ('success','failure')),
+          detail      JSONB,
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      -- Audit logs are append-only. No UPDATE or DELETE ever.
+
+  age_graph:
+    setup: |
+      -- Enable AGE extension
+      CREATE EXTENSION IF NOT EXISTS age;
+      LOAD 'age';
+      SET search_path = ag_catalog, "$user", public;
+
+      -- Create FLAIR graph
+      SELECT create_graph('flair');
+
+    nodes: |
+      -- Services are graph nodes
+      -- Created/updated via AGE when a new service is detected
+      SELECT * FROM cypher('flair', $$
+          MERGE (s:Service {id: $id, name: $name, zone: $zone})
+          ON CREATE SET s.first_seen = $now
+          ON MATCH  SET s.last_seen  = $now
+          RETURN s
+      $$) AS (s agtype);
+
+    edges: |
+      -- Flows are graph edges between services
+      SELECT * FROM cypher('flair', $$
+          MATCH (src:Service {id: $src_id}), (dst:Service {id: $dst_id})
+          CREATE (src)-[f:FLOW {
+              protocol:   $protocol,
+              encrypted:  $encrypted,
+              tls_ver:    $tls_version,
+              bytes:      $bytes,
+              captured_at: $captured_at
+          }]->(dst)
+          RETURN f
+      $$) AS (f agtype);
+
+    cross_zone_query: |
+      -- Find all unencrypted flows crossing zone boundaries
+      SELECT * FROM cypher('flair', $$
+          MATCH (src:Service)-[f:FLOW]->(dst:Service)
+          WHERE src.zone <> dst.zone
+            AND f.encrypted = false
+          RETURN src.name, src.zone, dst.name, dst.zone,
+                 f.protocol, f.bytes
+          ORDER BY f.bytes DESC
+      $$) AS (
+          src_name    agtype,
+          src_zone    agtype,
+          dst_name    agtype,
+          dst_zone    agtype,
+          protocol    agtype,
+          bytes       agtype
+      );
+
+---
+
+migrations:
+
+  tooling: "golang-migrate — SQL files only, no ORM migrations"
+
+  naming: |
+    migrations/
+      000001_create_agents.up.sql
+      000001_create_agents.down.sql
+      000002_create_flows.up.sql
+      000002_create_flows.down.sql
+
+  rules:
+    - "Every migration has a corresponding .down.sql"
+    - "Migrations are additive when possible (ADD COLUMN, CREATE INDEX)"
+    - "Destructive migrations (DROP COLUMN) require a deprecation migration first"
+    - "No data migrations in schema migration files — use separate one-off scripts"
+    - "Indexes are created CONCURRENTLY in production migrations"
+    - "Every migration runs in a transaction (BEGIN / COMMIT)"
+
+  concurrent_index: |
+    -- migrations/000003_add_flow_index.up.sql
+    -- Note: CREATE INDEX CONCURRENTLY cannot run inside a transaction
+    -- Use a separate migration file with no transaction wrapper
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_flows_cross_zone
+    ON flows ((metadata->>'zone'))
+    WHERE deleted_at IS NULL;
+
+---
+
+query_patterns:
+
+  always_use_context: |
+    // Every query passes ctx for cancellation
+    func (r *PostgresFlowRepository) FindByID(ctx context.Context, id uuid.UUID) (*domain.Flow, error) {
+        row := r.db.QueryRow(ctx, `SELECT ... FROM flows WHERE id = $1`, id)
+        ...
+    }
+
+  batch_insert: |
+    // Use pgx CopyFrom for bulk flow ingestion — never individual INSERTs in a loop
+    _, err := r.db.CopyFrom(
+        ctx,
+        pgx.Identifier{"flows"},
+        []string{"agent_id","src_ip","dst_ip","protocol","encrypted","captured_at"},
+        pgx.CopyFromRows(rows),
+    )
+
+  metadata_query: |
+    // Query on JSONB metadata (e.g. find all flows from production zone)
+    SELECT * FROM flows
+    WHERE metadata->>'environment' = $1
+      AND deleted_at IS NULL
+    ORDER BY captured_at DESC
+    LIMIT $2;
+
+  no_orm:
+    rule: "No GORM, no sqlx, no query builder. Raw pgx only."
+    reason: >
+      Apache AGE requires direct SQL/Cypher. An ORM layer adds abstraction
+      that conflicts with AGE's cypher() function syntax and makes
+      query optimisation opaque.
+
+---
+
+performance:
+
+  connection_pool: |
+    // pgxpool configuration for flair-core
+    config, _ := pgxpool.ParseConfig(dsn)
+    config.MaxConns = 20
+    config.MinConns = 2
+    config.MaxConnLifetime = 30 * time.Minute
+    config.MaxConnIdleTime = 5 * time.Minute
+
+  retention_policy: |
+    -- Configurable via admin UI — stored in system_config table
+    -- Default: keep raw flows 30 days, aggregated stats forever
+    DELETE FROM flows
+    WHERE captured_at < now() - (
+        SELECT value::interval FROM system_config WHERE key = 'flow_retention_period'
+    )
+    AND deleted_at IS NULL;
+
+  explain_rule: >
+    Any query that will run on a table > 100k rows must have EXPLAIN ANALYZE
+    output documented in the PR description before merge.
+    Gate 3 score -10 if missing for qualifying queries.

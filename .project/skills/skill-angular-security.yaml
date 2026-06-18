@@ -1,0 +1,259 @@
+skill:
+  id: flair-angular-security
+  version: "1.0"
+  name: "Angular Architecture & Application Security"
+  description: >
+    Governs Angular component design, service architecture, D3.js graph rendering,
+    and application security for flair-ui. Also covers security AC challenge protocol
+    for all FLAIR repos. Loaded by Angular Frontend Expert, Application Security Expert,
+    Red Team Expert and Dev Agent for any UI or security-related task.
+  applies_to:
+    - flair-ui
+    - flair-core  # security AC challenge applies to all repos
+    - flair-agent
+  loaded_by:
+    - Angular_Frontend_Expert
+    - Application_Security_Expert
+    - Red_Team_Expert
+    - Dev_Agent
+
+---
+
+angular_architecture:
+
+  structure: |
+    flair-ui/src/
+      app/
+        core/           # Singleton services, interceptors, guards — imported once in AppModule
+          auth/
+          http/
+          error/
+        shared/         # Dumb components, pipes, directives — no business logic
+          components/
+          pipes/
+        features/       # Feature modules — lazy loaded
+          flow-map/
+            components/   # Smart + dumb components
+            services/     # Feature-scoped services
+            store/        # NgRx or signal store (feature state only)
+        domain/         # TypeScript interfaces mirroring Go domain types
+          flow.model.ts
+          service.model.ts
+          alert.model.ts
+
+  principles:
+    smart_dumb_split:
+      smart: >
+        Smart components (containers): fetch data via services, manage state,
+        pass data down to dumb components via @Input.
+        Example: FlowMapContainerComponent
+      dumb: >
+        Dumb components (presentational): receive data via @Input, emit events via @Output.
+        No service injection, no HTTP calls, no state management.
+        Example: FlowNodeComponent, FlowEdgeComponent
+      rule: "If a component injects a service that calls HTTP, it is a smart component"
+
+    change_detection:
+      default: "OnPush on all components — no exceptions"
+      reason: >
+        The flow graph can have 500+ nodes. Default change detection would re-render
+        the entire graph on every tick. OnPush ensures re-render only on Input reference change.
+      signals: >
+        Use Angular Signals for local state within a component.
+        Use RxJS Observables for async streams (HTTP, WebSocket).
+        Never mix: if it's a stream, use Observable; if it's state, use Signal.
+
+    service_architecture:
+      core_services:
+        - "FlowApiService: HTTP calls to flair-core REST API — pure HTTP, no state"
+        - "AuthService: OIDC token management, login/logout"
+        - "AlertService: real-time alert stream via SSE or polling"
+      feature_services:
+        - "FlowMapService: transforms API responses to D3 graph data structures"
+        - "ScoringService: computes display colour from flow score (0-100 → green/amber/red)"
+      rule: >
+        Services in core/ are singletons — provided in root.
+        Services in features/ are provided at the feature module level — not root.
+
+  d3_graph:
+    architecture: >
+      D3.js renders inside a dedicated Angular component that manages the SVG lifecycle.
+      Angular handles component lifecycle and data binding.
+      D3 handles only SVG manipulation — never Angular component creation.
+    structure: |
+      @Component({
+        selector: 'flair-flow-graph',
+        template: '<svg #svgRef></svg>',
+        changeDetection: ChangeDetectionStrategy.OnPush
+      })
+      export class FlowGraphComponent implements OnChanges, OnDestroy {
+          @Input() flows: FlowEdge[] = [];
+          @Input() services: FlowNode[] = [];
+          @ViewChild('svgRef', { static: true }) svgRef!: ElementRef<SVGSVGElement>;
+
+          private simulation!: d3.Simulation<FlowNode, FlowEdge>;
+
+          ngOnChanges(): void {
+              this.render();  // Only re-renders when @Input references change (OnPush)
+          }
+
+          private render(): void {
+              const svg = d3.select(this.svgRef.nativeElement);
+              // D3 manipulation here — never create Angular components
+          }
+
+          ngOnDestroy(): void {
+              this.simulation?.stop();
+          }
+      }
+
+    performance:
+      - "Use d3.zoom() with throttled events (100ms debounce) for large graphs"
+      - "Virtualise nodes outside viewport for graphs > 200 nodes"
+      - "Color mapping computed once in ScoringService — not in D3 render loop"
+
+  domain_types:
+    rule: >
+      TypeScript interfaces in domain/ must mirror Go domain structs exactly.
+      When the Flow Go struct changes, domain/flow.model.ts is updated in the same PR.
+    example: |
+      // domain/flow.model.ts — mirrors domain.Flow in Go
+      export interface Flow {
+        agentId:          string;
+        srcIp:            string;
+        srcPort:          number;
+        dstIp:            string;
+        dstPort:          number;
+        direction:        'outbound' | 'inbound' | 'internal';
+        protocol:         string;
+        tlsVersion:       string;
+        tlsCipherSuite:   string;
+        ja3Hash:          string;
+        encrypted:        boolean;
+        srcProcess:       string;
+        srcPid:           number;
+        containerId:      string;
+        bytesTransferred: number;
+        timestamp:        string; // ISO8601
+        metadata:         Record<string, string>;
+      }
+
+---
+
+security_ac_challenge:
+
+  description: >
+    Protocol run by the Security Agent on every US, regardless of which repo.
+    For each AC, these questions are asked in order. Missing answers = add security AC.
+
+  questions_per_ac:
+    q1_authentication: |
+      Does this AC involve an operation that requires authentication?
+      If yes: is there an AC verifying the endpoint/function rejects unauthenticated requests?
+      Expected AC: "Given unauthenticated request, when [action], then 401 Unauthorized"
+
+    q2_tls: |
+      Does this AC involve data in transit?
+      If yes: is the transport TLS 1.3? Is there an AC verifying TLS version?
+      Hard rule: no cleartext for any Flow data. No TLS 1.2 without documented exception.
+      Expected AC: "Given flow data transmission, when captured, then TLS version = TLS1.3"
+
+    q3_audit_log: |
+      Does this AC involve a state-changing operation (create, update, delete, enrol)?
+      If yes: is there an AC verifying a structured audit log entry is produced?
+      Expected AC: "Given [action], when executed, then audit_logs contains entry with actor, action, resource, outcome"
+
+    q4_input_validation: |
+      Does this AC accept external input (API parameter, agent-submitted data, user input)?
+      If yes: is there an AC for each invalid input class?
+      At minimum: missing field, wrong type, out-of-range value, SQL injection attempt.
+      Expected AC: "Given [invalid input], when submitted, then 400 with structured error (no stack trace)"
+
+    q5_error_responses: |
+      Does this AC produce error responses?
+      If yes: are error responses consistent (same structure across all endpoints)?
+      Hard rule: no stack traces, no internal paths, no DB error messages in responses.
+      Expected format: {"error": {"code": "FLOW_NOT_FOUND", "message": "..."}}
+
+    q6_tls_verify: |
+      Does this AC involve any outbound connection (agent→core, core→webhook, core→OIDC)?
+      If yes: is --tls-verify=false or equivalent explicitly absent from the implementation notes?
+      Any AC that permits certificate bypass is auto-rejected — Gate 1 hard block.
+
+  scoring: |
+    Security AC completeness score (contributes to Gate 1):
+    - 6/6 questions answered with AC present: +15 (full weight)
+    - 4-5/6: +10
+    - 2-3/6: +5
+    - 0-1/6: +0 (and US is sent back to PO Agent for AC completion)
+
+---
+
+flair_ui_security:
+
+  csp: |
+    # Content Security Policy for flair-ui (served by nginx)
+    Content-Security-Policy:
+      default-src 'self';
+      script-src 'self';
+      style-src 'self' 'unsafe-inline';  # Angular material requires this
+      img-src 'self' data:;
+      connect-src 'self' https://api.flair-sec.local;
+      frame-ancestors 'none';
+
+  auth_interceptor: |
+    // core/http/auth.interceptor.ts
+    // Attaches Bearer token to every flair-core API request
+    @Injectable()
+    export class AuthInterceptor implements HttpInterceptor {
+        intercept(req: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
+            const token = this.authService.getToken();
+            if (!token) {
+                return this.authService.refreshToken().pipe(
+                    switchMap(newToken => next.handle(req.clone({
+                        setHeaders: { Authorization: `Bearer ${newToken}` }
+                    })))
+                );
+            }
+            return next.handle(req.clone({
+                setHeaders: { Authorization: `Bearer ${token}` }
+            }));
+        }
+    }
+
+  xss_prevention:
+    rule: "Never use innerHTML or bypassSecurityTrust* without documented justification"
+    d3_exception: >
+      D3 textContent assignments are safe. D3 innerHTML usage requires
+      // SECURITY: innerHTML used here — input sanitised at API layer
+      comment and a corresponding security AC.
+
+  error_handling: |
+    // core/error/error.interceptor.ts
+    // Never expose internal errors to the UI
+    intercept(req, next): Observable<HttpEvent<unknown>> {
+        return next.handle(req).pipe(
+            catchError(err => {
+                const userMessage = this.mapErrorToUserMessage(err.status);
+                this.toastService.error(userMessage);
+                return throwError(() => new Error(userMessage)); // Never forward raw error
+            })
+        );
+    }
+
+---
+
+accessibility:
+
+  standard: "WCAG 2.1 AA — enforced, not aspirational"
+
+  d3_graph_accessibility: |
+    // Every SVG graph must have:
+    // 1. A <title> element with a description
+    // 2. aria-label on interactive nodes
+    // 3. Keyboard navigation (Tab to focus nodes, Enter to select)
+    // 4. Colour is never the sole differentiator — use shape or label as secondary cue
+
+  testing: |
+    // Use @axe-core/angular in E2E tests
+    // Gate 3 score -10 per critical accessibility violation in axe report

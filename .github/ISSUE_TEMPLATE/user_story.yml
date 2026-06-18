@@ -1,0 +1,100 @@
+name: User Story (internal backlog)
+description: Internal backlog item — created by PO Agent or Scrum Master
+title: "[US] "
+labels: [user-story, backlog]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Internal backlog template. Used by the PO Agent to create User Stories
+        that feed the autonomous development workflow.
+        Link to the story file: `flair-docs/stories/us-{id}.md`
+
+  - type: dropdown
+    id: repo
+    attributes:
+      label: Target repo
+      options:
+        - flair-agent
+        - flair-agent-windows
+        - flair-agent-k8s
+        - flair-core
+        - flair-ui
+        - flair-helm
+        - flair-docs
+        - flair-rules
+        - flair-sdk-go
+        - flair-sdk-python
+        - Cross-repo
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      options:
+        - MVP
+        - v1-enterprise
+        - phase-3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Estimate
+      options:
+        - XS — trivial change, < 2h
+        - S — small, < 1 day
+        - M — medium, 1-3 days
+        - L — large, 3-5 days
+        - XL — very large, needs splitting
+    validations:
+      required: true
+
+  - type: textarea
+    id: story
+    attributes:
+      label: User Story
+      value: |
+        **As a** [RSSI / auditor / security engineer / admin]
+        **I want** [action]
+        **So that** [benefit]
+    validations:
+      required: true
+
+  - type: textarea
+    id: ac
+    attributes:
+      label: Acceptance Criteria
+      description: Given/When/Then format. Include at least one security AC.
+      value: |
+        - [ ] AC-{id}-01: Given [...], when [...], then [...]
+        - [ ] AC-{id}-02: Given [...] (error case), when [...], then [...]
+        - [ ] AC-{id}-SEC-01: Given [...] (security), when [...], then [...]
+    validations:
+      required: true
+
+  - type: input
+    id: story_file
+    attributes:
+      label: Story file
+      description: Path to the story file in flair-docs
+      placeholder: "flair-docs/stories/us-{id}.md"
+
+  - type: input
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Issue numbers this US depends on
+      placeholder: "#12, #15"
+
+  - type: input
+    id: blocks
+    attributes:
+      label: Blocks
+      description: Issue numbers this US unblocks
+      placeholder: "#20"

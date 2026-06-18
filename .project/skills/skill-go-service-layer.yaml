@@ -1,0 +1,200 @@
+skill:
+  id: flair-go-service-layer
+  version: "1.0"
+  name: "Go Service Layer"
+  description: >
+    Defines the service layer architecture for flair-core.
+    Enforces clean separation between HTTP handlers, application services, domain logic,
+    and infrastructure. Loaded by Go Software Architect and Dev Agent before any
+    flair-core use case implementation.
+  applies_to:
+    - flair-core
+  loaded_by:
+    - Go_Software_Architect
+    - Dev_Agent
+
+---
+
+architecture:
+
+  layers:
+    description: >
+      flair-core follows a hexagonal (ports and adapters) architecture.
+      Dependencies always point inward — infrastructure depends on domain, never the reverse.
+    diagram: |
+      ┌─────────────────────────────────────┐
+      │  api/handlers/          (HTTP in)   │  ← primary adapters
+      │  api/webhooks/          (events in) │
+      ├─────────────────────────────────────┤
+      │  application/services/  (use cases) │  ← orchestrates domain
+      ├─────────────────────────────────────┤
+      │  domain/                (entities)  │  ← pure Go, no imports
+      ├─────────────────────────────────────┤
+      │  infrastructure/store/  (DB out)    │  ← secondary adapters
+      │  infrastructure/oidc/   (OIDC out)  │
+      └─────────────────────────────────────┘
+    rule: "No import of infrastructure/* from domain/*. No import of api/* from application/*."
+
+  package_layout:
+    flair_core:
+      - "api/handlers/         — HTTP handlers, request/response binding only"
+      - "api/middleware/        — auth, logging, recovery middleware"
+      - "application/services/  — use cases: FlowService, ScoringService, AlertService"
+      - "application/ports/     — interfaces used by services (in: commands; out: repos)"
+      - "domain/               — Flow, Alert, Score structs and domain rules"
+      - "infrastructure/store/  — PostgreSQL + AGE implementations"
+      - "infrastructure/oidc/   — OIDC provider adapters"
+
+---
+
+service_layer:
+
+  rules:
+    - "Services receive commands/queries as structs — never raw http.Request"
+    - "Services return domain objects or explicit error types — never HTTP status codes"
+    - "Services own transaction boundaries — handlers never manage transactions"
+    - "Services are stateless — all dependencies injected via constructor"
+
+  command_pattern:
+    description: "Input to a service is always a typed command or query struct"
+    correct: |
+      type IngestFlowCommand struct {
+          AgentID  string
+          Flow     domain.Flow
+          ReceivedAt time.Time
+      }
+
+      func (s *FlowService) IngestFlow(ctx context.Context, cmd IngestFlowCommand) (*domain.Flow, error) {
+          // validate, enrich, persist, score
+      }
+    wrong: |
+      // Handler passes raw JSON map to service — forbidden
+      func (s *FlowService) IngestFlow(ctx context.Context, payload map[string]any) error { ... }
+
+  transaction_boundary:
+    rule: >
+      A service method is a single unit of work. If it calls multiple repositories,
+      wrap in a transaction — never let a handler do it.
+    pattern: |
+      func (s *FlowService) IngestFlow(ctx context.Context, cmd IngestFlowCommand) (*domain.Flow, error) {
+          return s.db.WithTransaction(ctx, func(tx pgx.Tx) (*domain.Flow, error) {
+              flow, err := s.flowRepo.Save(ctx, tx, &cmd.Flow)
+              if err != nil {
+                  return nil, fmt.Errorf("flow service: save flow: %w", err)
+              }
+              if err := s.scorer.Score(ctx, tx, flow); err != nil {
+                  return nil, fmt.Errorf("flow service: score flow: %w", err)
+              }
+              return flow, nil
+          })
+      }
+
+  handler_responsibility:
+    allowed:
+      - "Bind and validate HTTP request → command struct"
+      - "Call one service method"
+      - "Map result to HTTP response"
+      - "Return HTTP status code"
+    forbidden:
+      - "Business logic of any kind"
+      - "Direct repository calls"
+      - "Transaction management"
+      - "Domain object construction"
+    pattern: |
+      func (h *FlowHandler) IngestFlow(w http.ResponseWriter, r *http.Request) {
+          var req IngestFlowRequest
+          if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+              h.respond.BadRequest(w, "invalid request body")
+              return
+          }
+          flow, err := h.flowService.IngestFlow(r.Context(), toCommand(req))
+          if err != nil {
+              h.respond.Error(w, err)
+              return
+          }
+          h.respond.Created(w, toResponse(flow))
+      }
+
+---
+
+ports:
+
+  description: >
+    Ports are interfaces defined in application/ports/ that services depend on.
+    Infrastructure packages implement these interfaces — services never import infrastructure directly.
+
+  inbound_ports:
+    description: "Interfaces that primary adapters (handlers) call — usually the service itself"
+    example: |
+      // application/ports/flow_service.go
+      type FlowIngestor interface {
+          IngestFlow(ctx context.Context, cmd IngestFlowCommand) (*domain.Flow, error)
+      }
+
+  outbound_ports:
+    description: "Interfaces that services call — implemented by infrastructure"
+    examples:
+      - |
+        // application/ports/flow_repository.go
+        type FlowRepository interface {
+            Save(ctx context.Context, tx pgx.Tx, flow *domain.Flow) (*domain.Flow, error)
+            FindByID(ctx context.Context, id uuid.UUID) (*domain.Flow, error)
+            FindCrossZone(ctx context.Context, from, to string, limit int) ([]*domain.Flow, error)
+        }
+      - |
+        // application/ports/scorer.go
+        type FlowScorer interface {
+            Score(ctx context.Context, tx pgx.Tx, flow *domain.Flow) error
+        }
+
+  gate_impact: "Gate 2 score -15 if service imports infrastructure package directly"
+
+---
+
+domain:
+
+  rules:
+    - "Domain structs carry no JSON tags, no DB tags, no HTTP annotations"
+    - "Domain rules expressed as methods on domain types — not in services"
+    - "No external package imports in domain/ — only stdlib"
+  example: |
+    // domain/flow.go
+    package domain
+
+    type Flow struct {
+        ID        uuid.UUID
+        AgentID   string
+        SrcIP     string
+        // ... (see Flow contract in CLAUDE.md)
+    }
+
+    func (f *Flow) IsEncrypted() bool {
+        return f.Encrypted && f.TLSVersion != ""
+    }
+
+    func (f *Flow) IsCrossZone(zones map[string]string) bool {
+        srcZone := zones[f.SrcIP]
+        dstZone := zones[f.DstIP]
+        return srcZone != "" && dstZone != "" && srcZone != dstZone
+    }
+
+---
+
+anti_patterns:
+  - name: "Anemic domain model"
+    description: "Flow struct with no methods — all logic in services as procedural code"
+    fix: "Move invariants and predicates to methods on domain types"
+
+  - name: "Fat handler"
+    description: "Handler contains scoring logic, DB calls, or business decisions"
+    fix: "Extract to service method — handler calls exactly one service method"
+
+  - name: "Service calls service"
+    description: "FlowService.IngestFlow calls ScoringService directly"
+    fix: >
+      Services depend on outbound port interfaces (FlowScorer), not on concrete sibling services.
+      Wire via dependency injection at startup.
+
+  - name: "Shared mutable state"
+    description: "Service holds a map or slice that grows at runtime — race condition under load"
+    fix: "Services are stateless. State lives in the repository layer."

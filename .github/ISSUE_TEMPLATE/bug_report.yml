@@ -1,0 +1,102 @@
+name: Bug Report
+description: Something is not working as expected
+title: "[Bug] "
+labels: [bug, triage]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a bug.
+        **Do not use this form for security vulnerabilities** — see [SECURITY.md](../../SECURITY.md) instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: FLAIR version
+      description: Run `flair-agent --version` or check the GitHub Release tag
+      placeholder: "1.2.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      options:
+        - flair-agent (Linux eBPF)
+        - flair-agent-windows
+        - flair-agent-k8s
+        - flair-core (API / server)
+        - flair-ui (web interface)
+        - flair-helm (Helm chart)
+        - flair-rules (detection rules)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux (bare metal or VM)
+        - Linux (Docker)
+        - Linux (Kubernetes)
+        - Windows
+        - macOS (dev only)
+    validations:
+      required: true
+
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel / OS version
+      description: For flair-agent — run `uname -r`. For flair-core — OS version.
+      placeholder: "5.15.0-76-generic / Ubuntu 22.04"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Clear and concise description of the bug
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Deploy flair-agent on Linux kernel 5.15
+        2. Start capturing flows
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste structured JSON logs from flair-agent or flair-core. Remove any sensitive data.
+      render: json
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate
+          required: true
+        - label: This is not a security vulnerability (I would use SECURITY.md for that)
+          required: true
+        - label: I am running a supported version (latest or latest-1)
+          required: true

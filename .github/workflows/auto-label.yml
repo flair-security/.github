@@ -1,0 +1,117 @@
+name: Auto label
+
+on:
+  issues:
+    types: [opened, edited]
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  # Note: `needs-human-review` and `auto-approved` labels are intentionally absent.
+  # These are set programmatically by Gate 4 agent logic, not derived from commit conventions.
+
+  label-issue:
+    name: Label issues by template
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues'
+    permissions:
+      issues: write
+
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            const title = context.payload.issue.title || '';
+            const labels = [];
+
+            // Detect component from issue body
+            const componentMap = {
+              'flair-agent (Linux eBPF)': 'component:agent',
+              'flair-agent-windows': 'component:agent-windows',
+              'flair-agent-k8s': 'component:agent-k8s',
+              'flair-core': 'component:core',
+              'flair-ui': 'component:ui',
+              'flair-helm': 'component:helm',
+              'flair-rules': 'component:rules',
+            };
+
+            for (const [text, label] of Object.entries(componentMap)) {
+              if (body.includes(text)) labels.push(label);
+            }
+
+            // Detect regulatory flag
+            const regulatoryKeywords = ['NIS2', 'DORA', 'GDPR', 'ISO 27001', 'SOC 2'];
+            if (regulatoryKeywords.some(k => body.includes(k))) {
+              labels.push('regulatory');
+            }
+
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                labels,
+              });
+            }
+
+  label-pr:
+    name: Label PRs by conventional commit prefix
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: write
+
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title || '';
+            const body = context.payload.pull_request.body || '';
+            const labels = [];
+
+            // Detect type from PR title (Conventional Commits)
+            const typeMap = {
+              'feat!':     ['feat', 'breaking-change'],
+              'feat':      ['feat'],
+              'fix':       ['fix'],
+              'chore':     ['chore'],
+              'docs':      ['docs'],
+              'refactor':  ['refactor'],
+              'test':      ['test'],
+              'perf':      ['perf'],
+              'security':  ['security'],
+              'ci':        ['chore'],
+            };
+
+            for (const [prefix, prLabels] of Object.entries(typeMap)) {
+              if (title.toLowerCase().startsWith(prefix + ':') ||
+                  title.toLowerCase().startsWith(prefix + '(')) {
+                labels.push(...prLabels);
+                break;
+              }
+            }
+
+            // Detect BREAKING CHANGE in body
+            if (body.includes('BREAKING CHANGE') || title.includes('!:')) {
+              if (!labels.includes('breaking-change')) labels.push('breaking-change');
+            }
+
+            // Detect flow-contract impact
+            if (body.includes('Flow struct') || body.includes('flow-contract')) {
+              labels.push('flow-contract');
+            }
+
+            // Detect security impact
+            if (body.includes('AC-') && body.includes('-SEC-')) {
+              if (!labels.includes('security')) labels.push('security');
+            }
+
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                labels,
+              });
+            }
