@@ -1,34 +1,29 @@
-# LAUNCH.md — Démarrer le mode autonome FLAIR
+# LAUNCH.md — Mode autonome FLAIR depuis l'IDE
 
-> Ce fichier est le point d'entrée unique pour opérateurs humains.
-> Lire `AGENT.md` pour comprendre le comportement des agents.
-> Lire `CLAUDE.md` pour le contexte projet complet.
+> Tous les agents tournent **localement** depuis l'IDE ou terminal.
+> GitHub Actions = CI + triage backlog uniquement. Claude ne tourne jamais sur un runner.
+> Lire `AGENT.md` pour le comportement des agents. `CLAUDE.md` pour le contexte projet.
 
 ---
 
 ## Prérequis
 
-### Secrets GitHub à configurer (Settings → Secrets → Actions)
-
-| Secret | Scope requis | Usage |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | — | Invocation Claude Code |
-| `GH_TOKEN_PROJECTS` | `project`, `repo`, `issues` | Orchestrateur — lecture/écriture GitHub Projects |
-| `GH_TOKEN_REPOS` | `repo`, `pull-requests`, `issues` | Dev Agent — travail dans les repos composants |
-
-### Localement
-
 ```bash
-# CLI
+# Claude Code CLI
 npm install -g @anthropic-ai/claude-code
 
-# Variables
+# Variables locales
 export ANTHROPIC_API_KEY=sk-ant-...
-export GH_TOKEN=<github_token_with_projects_scope>
-gh auth login  # pour les scripts Python
+export GH_TOKEN=<token scope: project, repo, issues, read:org>
+
+# GitHub CLI
+gh auth login
+
+# Python
+pip install pyyaml requests
 ```
 
-### Repos clonés côte à côte
+**Repos clonés côte à côte :**
 
 ```
 parent/
@@ -41,23 +36,7 @@ parent/
 
 ---
 
-## Lancement du cycle autonome complet
-
-### Option A — GitHub Actions (production, recommandé)
-
-```bash
-# Déclencher manuellement un cycle Orchestrateur
-gh workflow run orchestrator.yml \
-  --repo flair-security/.github \
-  -f mode=full
-
-# Suivre l'exécution
-gh run watch --repo flair-security/.github
-```
-
-Le cron est déjà configuré toutes les 6 heures.
-
-### Option B — Local (debug / développement)
+## Cycle Orchestrateur
 
 ```bash
 # Depuis flair-security/.github/
@@ -66,36 +45,25 @@ claude --headless \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
 ```
 
+Depuis **VS Code** : ouvrir Claude Code → coller le contenu de `.project/prompts/orchestrator.md`.
+
 ---
 
-## Lancer un agent spécifique sur un US
-
-### Dispatcher manuellement le Dev Agent sur un US
+## Dev Agent sur un US
 
 ```bash
-# Via GitHub Actions (recommandé — utilise les secrets centralisés)
-gh workflow run dev-agent.yml \
-  --repo flair-security/.github \
-  -f us_id=42 \
-  -f us_slug=grpc-detection \
-  -f target_repo=flair-agent \
-  -f gate1_score=87
-
-# Suivre le travail du Dev Agent
-gh run watch --repo flair-security/.github
-```
-
-### Localement dans un repo composant
-
-```bash
-# Construire le contexte avec injection de skills
+# 1. Assembler le contexte (CLAUDE.md + AGENT.md + skills ciblés + brief Dev Agent)
 python3 scripts/build-agent-context.py \
   --us 42 \
   --repo flair-agent \
   --output /tmp/context-us42.md
 
-# Lancer le Dev Agent
+# 2. Se placer sur la branche (créée par le scaffold dev-agent.yml ou manuellement)
 cd ../flair-agent
+git fetch origin
+git checkout feat/us-42-grpc-detection
+
+# 3. Lancer
 claude --headless \
   --print "$(cat /tmp/context-us42.md)" \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
@@ -103,84 +71,104 @@ claude --headless \
 
 ---
 
-## Lancer chaque agent manuellement
+## Autres agents
 
 ```bash
-# PO Agent — générer ou affiner les US d'un Epic
+# PO Agent
+cd flair-security/.github
 claude --headless \
   --print "$(cat .project/prompts/po-agent.md)" \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
 
-# Architect Agent — review technique d'un US
+# Architect Agent (passer le body de l'issue en contexte)
 claude --headless \
-  --print "EPIC_OR_US_CONTEXT: $(gh issue view 42 --json body -q .body)\n\n$(cat .project/prompts/architect-agent.md)" \
+  --print "$(gh issue view 42 --repo flair-security/flair-core --json body -q .body)
+
+$(cat .project/prompts/architect-agent.md)" \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
 
-# Security Agent — challenge AC sécurité
+# Security Agent
 claude --headless \
-  --print "US_CONTEXT: $(gh issue view 42 --json body -q .body)\n\n$(cat .project/prompts/security-agent.md)" \
+  --print "$(gh issue view 42 --repo flair-security/flair-core --json body -q .body)
+
+$(cat .project/prompts/security-agent.md)" \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
 
-# PR Review Agent — gate 3 + gate 4 sur une PR ouverte
+# PR Review Agent
 cd ../flair-core
 claude --headless \
-  --print "PR_NUMBER: 42\nREPO: flair-core\n\n$(cat ../flair-security/.github/.project/prompts/pr-review-agent.md)" \
+  --print "PR_NUMBER=42
+TARGET_REPO=flair-core
+
+$(cat ../flair-security/.github/.project/prompts/pr-review-agent.md)" \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
 ```
 
 ---
 
-## Vérifier l'état du backlog
+## Vérifier le backlog
 
 ```bash
-# Rapport backlog complet
-python3 scripts/check-backlog.py --org flair-security --project 1
-
-# Filtrer par status
-python3 scripts/check-backlog.py --status Ready
-python3 scripts/check-backlog.py --status "In progress"
-
-# Export JSON
-python3 scripts/check-backlog.py --format json > /tmp/backlog.json
+python3 scripts/check-backlog.py                        # tout
+python3 scripts/check-backlog.py --status Ready         # prêts
+python3 scripts/check-backlog.py --repo flair-core      # par repo
+python3 scripts/check-backlog.py --format json          # JSON
 ```
 
 ---
 
-## Initialiser un nouveau repo composant
+## Rôle des GitHub Actions
 
-```bash
-# Copier le template CLAUDE.md vers le nouveau repo
-cp templates/repo-claude/flair-agent.md ../flair-agent/CLAUDE.md
-
-# Copier le settings.json approprié
-mkdir -p ../flair-agent/.claude
-cp templates/repo-settings/flair-agent.json ../flair-agent/.claude/settings.json
-
-# Committer
-cd ../flair-agent
-git add CLAUDE.md .claude/settings.json
-git commit -m "chore: add Claude Code context and safety settings"
-```
-
----
-
-## Premier démarrage — checklist
-
-- [ ] Secrets GitHub configurés (`ANTHROPIC_API_KEY`, `GH_TOKEN_PROJECTS`, `GH_TOKEN_REPOS`)
-- [ ] GitHub Project n°1 créé dans l'org flair-security avec les champs Status, Priority, Repo, Phase, Size
-- [ ] Au moins un Epic + une US avec Status=Ready dans GitHub Projects
-- [ ] Tous les repos composants ont leur `CLAUDE.md` et `.claude/settings.json` (voir `templates/`)
-- [ ] `gh auth login` effectué localement
-- [ ] Premier cycle Orchestrateur déclenché manuellement et validé
-
----
-
-## Interventions humaines attendues
-
-| Déclencheur | Action humaine |
+| Workflow | Ce qu'il fait |
 |---|---|
-| PR labelée `needs-human-review` | Lire le gate artifact + décider du merge |
-| PR labelée `breaking-change` + `flow-contract` | Valider les coordinated PRs cross-repo |
-| Gate 4 score < 60 | Lire le rapport d'agent + débloquer ou rediriger |
-| Orchestrateur bloqué après 2 tentatives | Lire `needs-human-review` label + résoudre le blocage |
-| Nouveau Epic ou pivot stratégique | Alimenter GitHub Projects manuellement ou via PO Agent |
+| `validate.yml` | Lint YAML + skills à chaque push |
+| `auto-label.yml` | Labels automatiques sur issues/PRs |
+| `scorecard.yml` | OpenSSF Scorecard hebdomadaire |
+| `stale.yml` | Nettoyage issues/PRs stagnantes |
+
+Tous les agents (Orchestrateur, Dev, PO, Architect, Security, QA, PR Review) tournent **depuis l'IDE uniquement**.
+
+---
+
+## Initialiser un repo composant
+
+```bash
+REPO=flair-core
+
+gh repo create flair-security/$REPO --private
+gh repo clone flair-security/$REPO ../$REPO
+
+cp templates/repo-claude/$REPO.md ../$REPO/CLAUDE.md
+mkdir -p ../$REPO/.claude
+cp templates/repo-settings/$REPO.json ../$REPO/.claude/settings.json 2>/dev/null || \
+  cp templates/repo-settings/base.json ../$REPO/.claude/settings.json
+
+cd ../$REPO
+git add CLAUDE.md .claude/settings.json
+git commit -m "chore: add Claude Code context and safety settings
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+git push origin main
+```
+
+---
+
+## Secrets GitHub (CI uniquement)
+
+| Secret | Scope | Usage |
+|---|---|---|
+| `GH_TOKEN_PROJECTS` | `project`, `read:org` | `check-backlog.py` dans orchestrator.yml |
+| `GH_TOKEN_REPOS` | `repo` | Création branches dans dev-agent.yml |
+
+`ANTHROPIC_API_KEY` reste **local uniquement** — jamais dans GitHub Secrets.
+
+---
+
+## Premier démarrage
+
+- [ ] `ANTHROPIC_API_KEY` exportée localement
+- [ ] `gh auth login` OK
+- [ ] GitHub Project n°1 créé avec champs Status / Priority / Repo / Phase / Size
+- [ ] Repos MVP bootstrappés (flair-agent, flair-core, flair-ui)
+- [ ] Premier Epic + une US avec Status=Ready dans le Project
+- [ ] Premier cycle Orchestrateur lancé depuis l'IDE
