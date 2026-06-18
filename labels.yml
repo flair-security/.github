@@ -1,0 +1,79 @@
+# Org-wide label definitions — source of truth for all flair-security repos.
+# Synced by .github/workflows/sync-labels.yml on push or workflow_dispatch.
+
+# ── Type ──────────────────────────────────────────────────────────────────────
+- name: epic
+  color: "0075ca"
+  description: "Parent epic grouping multiple user stories"
+
+- name: user-story
+  color: "5319e7"
+  description: "Implementable user story with acceptance criteria"
+
+- name: feat
+  color: "0e8a16"
+  description: "New feature or capability"
+
+- name: bug
+  color: "d73a4a"
+  description: "Confirmed defect"
+
+- name: chore
+  color: "e4e669"
+  description: "Maintenance, tooling, dependency updates"
+
+- name: docs
+  color: "0052cc"
+  description: "Documentation only"
+
+- name: security
+  color: "b60205"
+  description: "Security fix or hardening — requires Security Agent Blue Team sign-off"
+
+- name: breaking-change
+  color: "e11d48"
+  description: "Breaking change — requires Architect sign-off and coordinated PRs"
+
+# ── Phase ─────────────────────────────────────────────────────────────────────
+- name: MVP
+  color: "7057ff"
+  description: "Phase MVP: Linux agent + core + UI baseline"
+
+- name: v1
+  color: "9b59b6"
+  description: "Phase v1: auth, scoring, alerts, Helm, docs, Windows agent"
+
+- name: v2
+  color: "c39bd3"
+  description: "Phase v2: K8s agent, Terraform, SDKs, rules marketplace"
+
+# ── Flow contract ─────────────────────────────────────────────────────────────
+- name: flow-contract
+  color: "ff6b35"
+  description: "Touches the Flow struct — coordinated PRs across all affected repos required"
+
+# ── Agent gates ───────────────────────────────────────────────────────────────
+- name: needs-human-review
+  color: "f9ca24"
+  description: "Agent blocked after 2 attempts — human intervention required"
+
+- name: auto-approved
+  color: "6bcb77"
+  description: "Gate 4 ≥ 85 — eligible for squash merge"
+
+- name: gate1-gap
+  color: "ffa502"
+  description: "Gate 1 score 60–79 — AC clarification needed before dispatch"
+
+- name: security-review-complete
+  color: "2ed573"
+  description: "Security Agent Blue Team sign-off posted"
+
+# ── CI / housekeeping ─────────────────────────────────────────────────────────
+- name: pinned
+  color: "0075ca"
+  description: "Pinned — exempt from stale bot"
+
+- name: stale
+  color: "ededed"
+  description: "No activity for 60 days"

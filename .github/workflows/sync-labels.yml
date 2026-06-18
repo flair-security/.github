@@ -1,0 +1,84 @@
+name: Sync labels
+
+on:
+  push:
+    branches: [main]
+    paths: [labels.yml]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    name: Sync labels to all flair-security repos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync labels
+        run: |
+          python3 - <<'EOF'
+          import subprocess, sys, json, re
+
+          ORG = "flair-security"
+          REPOS = [
+            "flair-agent", "flair-core", "flair-ui", "flair-helm",
+            "flair-docs", "flair-agent-windows", "flair-agent-k8s",
+            "flair-terraform-aws", "flair-terraform-azure", "flair-terraform-gcp",
+            "flair-sdk-go", "flair-sdk-python", "flair-rules",
+          ]
+
+          def gh(*args):
+            r = subprocess.run(["gh"] + list(args), capture_output=True, text=True)
+            return r.returncode, r.stdout, r.stderr
+
+          # Parse labels.yml (simple line-by-line, no pyyaml dep)
+          labels = []
+          current = {}
+          with open("labels.yml") as f:
+            for line in f:
+              line = line.rstrip()
+              if re.match(r"^- name:", line):
+                if current:
+                  labels.append(current)
+                current = {"name": line.split('"')[1]}
+              elif re.match(r"^\s+color:", line):
+                current["color"] = line.split('"')[1]
+              elif re.match(r"^\s+description:", line):
+                current["description"] = line.split('"')[1]
+            if current:
+              labels.append(current)
+
+          print(f"Labels to sync: {len(labels)}", flush=True)
+
+          for repo in REPOS:
+            full = f"{ORG}/{repo}"
+            # Check repo exists
+            code, _, _ = gh("repo", "view", full, "--json", "name")
+            if code != 0:
+              print(f"  {full}: repo not found — skipping", flush=True)
+              continue
+
+            ok = err = 0
+            for label in labels:
+              # Try create first, then edit if exists
+              code, _, stderr = gh(
+                "label", "create", label["name"],
+                "--repo", full,
+                "--color", label["color"],
+                "--description", label["description"],
+                "--force",
+              )
+              if code == 0:
+                ok += 1
+              else:
+                err += 1
+                print(f"    WARN {label['name']}: {stderr.strip()}", flush=True)
+
+            print(f"  {full}: {ok} OK, {err} errors", flush=True)
+
+          print("Done.", flush=True)
+          EOF
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN_REPOS }}
