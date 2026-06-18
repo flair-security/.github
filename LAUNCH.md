@@ -9,15 +9,15 @@
 ## Prérequis
 
 ```bash
-# Claude Code CLI
+# Claude Code CLI (déjà installé si tu utilises l'extension VS Code)
 npm install -g @anthropic-ai/claude-code
 
-# Variables locales
-export ANTHROPIC_API_KEY=sk-ant-...
-export GH_TOKEN=<token scope: project, repo, issues, read:org>
+# Authentification Claude Code via claude.ai (Pro Max — pas d'API key nécessaire)
+claude auth status   # vérifie que tu es loggé
 
-# GitHub CLI
-gh auth login
+# GitHub CLI + token (scope: project, repo, issues, read:org)
+export GH_TOKEN=github_pat_...
+gh auth login --with-token <<< "$GH_TOKEN"
 
 # Python
 pip install pyyaml requests
@@ -160,7 +160,7 @@ git push origin main
 | `GH_TOKEN_PROJECTS` | `project`, `read:org` | `check-backlog.py` dans orchestrator.yml |
 | `GH_TOKEN_REPOS` | `repo` | Création branches dans dev-agent.yml |
 
-`ANTHROPIC_API_KEY` reste **local uniquement** — jamais dans GitHub Secrets.
+Claude Code s'authentifie via `claude auth` (abonnement claude.ai) — pas d'`ANTHROPIC_API_KEY` nécessaire.
 
 ---
 
