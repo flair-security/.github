@@ -1,5 +1,7 @@
 # ADR-0001 — Flow struct as the central cross-repo contract
 
+> This content now also lives in the flair-docs Docusaurus site under docs/adr/ — that copy is the one intended for public browsing; this file remains the source of truth for now.
+
 **Date**: 2026-06-18
 **Status**: Accepted
 **Deciders**: Go Software Architect, eBPF Expert, Angular Frontend Expert

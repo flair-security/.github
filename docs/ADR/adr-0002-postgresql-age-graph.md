@@ -1,5 +1,7 @@
 # ADR-0002 — PostgreSQL + Apache AGE as the single database engine
 
+> This content now also lives in the flair-docs Docusaurus site under docs/adr/ — that copy is the one intended for public browsing; this file remains the source of truth for now.
+
 **Date**: 2026-06-18
 **Status**: Accepted
 **Deciders**: Database Architect, Go Software Architect

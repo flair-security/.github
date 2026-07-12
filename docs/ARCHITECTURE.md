@@ -4,6 +4,8 @@
 > This document is the source of truth for cross-repo decisions.
 > Changes to this document require an ADR in `docs/ADR/`.
 
+> This content now also lives in the flair-docs Docusaurus site under docs/architecture/ — that copy is the one intended for public browsing; this file remains the source of truth for now.
+
 ---
 
 ## Overview
