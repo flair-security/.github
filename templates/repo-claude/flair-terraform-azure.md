@@ -42,7 +42,7 @@ terraform-docs markdown . > README.md
 
 ## Repo structure
 
-```
+```text
 flair-terraform-azure/
   modules/
     flair-aks/           ← AKS cluster (workload identity, OIDC issuer, add-ons)
@@ -66,7 +66,7 @@ flair-terraform-azure/
 ## Skills auto-loaded for this repo
 
 | Priority | Skill | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | 1 (always) | skill-devops-cicd | all US |
 | 1 (always) | skill-ac-traceability | all US |
 

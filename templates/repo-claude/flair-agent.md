@@ -45,7 +45,7 @@ sudo bpftool map list
 
 ## Repo structure
 
-```
+```text
 flair-agent/
   cmd/flair-agent/        ← entrypoint, CLI flags, config loading
   internal/
@@ -65,6 +65,7 @@ flair-agent/
 ## Key interfaces owned by this repo
 
 **Produces** (sends to flair-core):
+
 ```go
 // Flow struct — see CLAUDE.md for the full 17-field definition
 // This is the single contract shared across all repos
@@ -72,7 +73,8 @@ type Flow struct { ... }
 ```
 
 **Exposes** (HTTP endpoints on agent):
-```
+
+```text
 GET /healthz         → 200 OK or 503
 GET /readyz          → 200 OK when eBPF programs attached
 GET /metrics         → Prometheus text format
@@ -84,7 +86,7 @@ POST /config/reload  → hot reload (mTLS required)
 ## Skills auto-loaded for this repo
 
 | Priority | Skill | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | 1 (always) | skill-solid-go | all US |
 | 1 (always) | skill-error-handling | all US |
 | 1 (always) | skill-ac-traceability | all US |

@@ -3,7 +3,7 @@
 ## Supported versions
 
 | Version | Supported |
-|---|---|
+| --- | --- |
 | latest release | ✅ Full support |
 | latest - 1 | ✅ Security fixes only |
 | older | ❌ No support |
@@ -20,7 +20,7 @@ Vulnerabilities disclosed publicly before a fix is available put all FLAIR users
 
 Use **GitHub Private Vulnerability Reporting** — available directly in each repo:
 
-```
+```text
 https://github.com/flair-security/{repo}/security/advisories/new
 ```
 
@@ -39,7 +39,7 @@ Or contact the maintainers via the organisation security email (configured in ea
 ## Response timeline
 
 | Step | Target |
-|---|---|
+| --- | --- |
 | Acknowledgement | 48 hours |
 | Initial assessment | 5 business days |
 | Fix — Critical (CVSS ≥ 9.0) | 7 days |

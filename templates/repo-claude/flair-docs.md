@@ -36,7 +36,7 @@ mkdocs build 2>&1 | grep WARNING
 
 ## Repo structure
 
-```
+```text
 flair-docs/
   docs/
     index.md             ← home page
@@ -62,7 +62,7 @@ Never delete a story file — they are the audit trail.
 ## Skills auto-loaded for this repo
 
 | Priority | Skill | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | 1 (always) | skill-ac-traceability | all US |
 | 1 (always) | skill-bdd-architecture | US story changes |
 

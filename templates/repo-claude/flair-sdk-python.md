@@ -40,7 +40,7 @@ python -m build
 
 ## Repo structure
 
-```
+```text
 flair-sdk-python/
   flair_sdk/            ← main package
     client.py           ← FlairClient class
@@ -86,7 +86,7 @@ async with FlairClient(...) as client:
 ## Skills auto-loaded for this repo
 
 | Priority | Skill | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | 1 (always) | skill-api-design | all US |
 | 1 (always) | skill-ac-traceability | all US |
 | 2 | skill-authentication | auth / token changes |

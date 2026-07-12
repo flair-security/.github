@@ -35,7 +35,7 @@ golangci-lint run --build-tags windows ./...
 
 ## Repo structure
 
-```
+```text
 flair-agent-windows/
   cmd/flair-agent-windows/  ← entrypoint, Windows service bootstrap
   internal/
@@ -53,7 +53,7 @@ flair-agent-windows/
 ## Key differences from flair-agent (Linux)
 
 | Aspect | flair-agent (Linux) | flair-agent-windows |
-|---|---|---|
+| --- | --- | --- |
 | Capture | eBPF (tc hook) | ETW + Npcap |
 | Privilege | CAP_BPF | SeSecurityPrivilege / Admin |
 | Service | systemd | Windows Service |
@@ -66,7 +66,7 @@ Both produce the same `Flow` struct — same contract, different capture path.
 ## Skills auto-loaded for this repo
 
 | Priority | Skill | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | 1 (always) | skill-solid-go | all US |
 | 1 (always) | skill-error-handling | all US |
 | 1 (always) | skill-ac-traceability | all US |

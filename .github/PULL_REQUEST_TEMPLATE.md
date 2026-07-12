@@ -21,7 +21,7 @@
      An AC without a test = incomplete implementation. -->
 
 | AC ID | Description | Test | Status |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | AC-{id}-01 | ... | `TestXxx_AC{id}_01_...` | ✅ / ⬜ |
 | AC-{id}-SEC-01 | ... | `TestXxx_AC{id}_SEC01_...` | ✅ / ⬜ |
 

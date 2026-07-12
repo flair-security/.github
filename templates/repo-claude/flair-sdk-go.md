@@ -39,7 +39,7 @@ go run examples/list-alerts/main.go
 
 ## Repo structure
 
-```
+```text
 flair-sdk-go/
   flair/                ← main package — Client, options, types
   flair/v1/             ← generated types from OpenAPI
@@ -55,6 +55,7 @@ flair-sdk-go/
 
 - Zero mandatory dependencies — only stdlib for core functionality
 - `Client` struct with functional options pattern:
+
   ```go
   c, err := flair.NewClient(baseURL,
       flair.WithBearerToken(token),
@@ -62,8 +63,9 @@ flair-sdk-go/
       flair.WithRetry(3),
   )
   ```
+
 - All methods return `(result, error)` — no panics
-- Context-first on every method: `func (c *Client) ListAlerts(ctx context.Context, ...) `
+- Context-first on every method: `func (c *Client) ListAlerts(ctx context.Context, ...)`
 - Pagination via iterator: `c.Alerts().List(ctx, filter)` returns `*PageIterator[Alert]`
 
 ---
@@ -71,7 +73,7 @@ flair-sdk-go/
 ## Skills auto-loaded for this repo
 
 | Priority | Skill | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | 1 (always) | skill-solid-go | all US |
 | 1 (always) | skill-error-handling | all US |
 | 1 (always) | skill-api-design | all US |

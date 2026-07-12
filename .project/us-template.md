@@ -9,7 +9,7 @@
 ## Identity
 
 | Field | Value |
-|---|---|
+| --- | --- |
 | **US ID** | US-{{ id }} |
 | **Epic** | {{ epic_title }} (#{{ epic_id }}) |
 | **Target repo(s)** | {{ repos }} |
@@ -42,7 +42,7 @@
 Each AC has a unique ID, a Given/When/Then statement, and a test mapping.
 An AC without a test mapping is treated as unimplemented regardless of code present.
 
-```
+```text
 AC-{{ id }}-01
   Given: {{ context }}
   When:  {{ action }}
@@ -76,7 +76,7 @@ AC-{{ id }}-SEC-01
 ### Affected components
 
 | Component | Repo | Change type |
-|---|---|---|
+| --- | --- | --- |
 | {{ e.g. EBPFCollector }} | {{ flair-agent }} | {{ new / modified / deleted }} |
 | {{ e.g. GraphStore interface }} | {{ flair-core }} | {{ new / modified / deleted }} |
 
@@ -88,7 +88,7 @@ AC-{{ id }}-SEC-01
 
 ### Design decisions
 
-{{ Brief ADR-style notes: what was considered, what was chosen, why. 
+{{ Brief ADR-style notes: what was considered, what was chosen, why.
    Reference existing ADRs if applicable: docs/ADR/adr-{id}.md }}
 
 ### Interface sketch
@@ -115,13 +115,13 @@ type {{ InterfaceName }} interface {
 ### Threat model for this US
 
 | Threat | Vector | Mitigation in AC |
-|---|---|---|
+| --- | --- | --- |
 | {{ e.g. Unencrypted flow data }} | {{ e.g. agent → core transport }} | {{ AC-id-SEC-01 }} |
 
 ### Regulatory mapping
 
 | Requirement | Framework | Covered by |
-|---|---|---|
+| --- | --- | --- |
 | {{ e.g. Network flow mapping }} | {{ NIS2 Art. 21 }} | {{ AC-id-01 }} |
 
 ### Security AC completeness checklist
@@ -149,7 +149,7 @@ type {{ InterfaceName }} interface {
 ### Files created / modified
 
 | File | Change | Commit |
-|---|---|---|
+| --- | --- | --- |
 | {{ path }} | {{ created / modified }} | {{ short SHA }} |
 
 ### Deviations from design
@@ -164,7 +164,7 @@ type {{ InterfaceName }} interface {
 *The single source of truth for Gate 2 and Gate 4 scoring.*
 
 | AC ID | Test file | Test function | Type | Status |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | AC-{{ id }}-01 | `{{ path/to/test_file.go }}` | `{{ TestFunctionName }}` | unit | ⬜ pending / ✅ passing |
 | AC-{{ id }}-02 | `{{ path/to/test_file.go }}` | `{{ TestErrorCase }}` | integration | ⬜ pending / ✅ passing |
 | AC-{{ id }}-SEC-01 | `{{ path/to/test_file.go }}` | `{{ TestSecurityProperty }}` | unit | ⬜ pending / ✅ passing |
@@ -177,7 +177,7 @@ Example: `func TestEBPFCollector_AC42_01_DetectsGRPCProtocol(t *testing.T)`
 ## Gate artifacts
 
 | Gate | Score | Decision | Artifact | Timestamp |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | Gate 1 — Readiness | — | — | `docs/gates/us-{{ id }}/gate-1.yaml` | — |
 | Gate 2 — Coverage (latest) | — | — | `docs/gates/us-{{ id }}/gate-2-{sha}.yaml` | — |
 | Gate 3 — Quality | — | — | `docs/gates/us-{{ id }}/gate-3.yaml` | — |
@@ -188,7 +188,7 @@ Example: `func TestEBPFCollector_AC42_01_DetectsGRPCProtocol(t *testing.T)`
 ## PR & merge
 
 | Field | Value |
-|---|---|
+| --- | --- |
 | Branch | `feat/us-{{ id }}-{{ slug }}` |
 | PR URL | — |
 | PR labels | — |

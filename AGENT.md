@@ -10,6 +10,7 @@
 FLAIR uses an **Acceptance Criteria Driven Development (ACDD)** model combined with **continuous confidence gates** — replacing binary checklists with scored, self-decided quality assessment.
 
 Key principles:
+
 - Gates produce a **confidence score** (0–100), never a boolean pass/fail
 - Agents **decide autonomously** based on their score — gates never block, they inform
 - Every gate produces a **signed artifact** committed to the repo — not a chat response
@@ -20,7 +21,7 @@ Key principles:
 ## Agent roles
 
 | Agent | Responsibility |
-|---|---|
+| --- | --- |
 | **Orchestrator** | Reads the sprint backlog, identifies ready US, dispatches to specialist agents, monitors cross-repo dependencies, coordinates parallel work |
 | **PO Agent** | Generates Epics and User Stories, writes acceptance criteria, clarifies ambiguous AC on request |
 | **Architect Agent** | Reviews technical AC, flags cross-repo impact, validates `Flow` contract changes |
@@ -35,7 +36,7 @@ Key principles:
 
 ## Orchestration model
 
-```
+```text
 Orchestrator reads sprint backlog
     │
     ├── For each US with Status = "Ready" and no blocking dependency:
@@ -66,7 +67,7 @@ Orchestrator reads sprint backlog
 
 ## Autonomous backlog lifecycle
 
-```
+```text
 PO Agent drafts Epic + User Stories with AC
     │
     ├── Architect Agent: technical feasibility, cross-repo deps, Flow contract impact
@@ -97,7 +98,7 @@ If an AC is ambiguous at implementation time, the Dev Agent **stops and queries 
 
 ### ACDD handoff chain
 
-```
+```text
 PO Agent writes AC
   → Architect Agent validates technical AC
     → Security Agent adds security AC
@@ -122,7 +123,7 @@ Gates run continuously during development, not just at start and end. Each gate 
 **Scoring:**
 
 | Check | Weight | How scored |
-|---|---|---|
+| --- | --- | --- |
 | All AC present, specific, testable | 40 | PO Agent assessment: 0 / partial / full |
 | No unresolved cross-repo dependency | 20 | GitHub Projects dependency graph |
 | `Flow` contract impact assessed | 15 | Architect Agent sign-off |
@@ -132,12 +133,13 @@ Gates run continuously during development, not just at start and end. Each gate 
 **Decision:**
 
 | Score | Action |
-|---|---|
+| --- | --- |
 | ≥ 80 | Dispatch to Dev Agent — implementation starts |
 | 60–79 | Send specific gap list to PO Agent for resolution — re-run gate after response |
 | < 60 | US moved back to Backlog — Orchestrator notifies PO Agent with reason |
 
 **Artifact** (`docs/gates/us-{id}/gate-1.yaml`):
+
 ```yaml
 gate: READINESS
 us_id: 42
@@ -164,7 +166,7 @@ notes: "Security AC added by Security Agent: missing TLS verification check"
 **Scoring:**
 
 | Check | Weight | How scored |
-|---|---|---|
+| --- | --- | --- |
 | AC covered by at least one test | 50 | AC-to-test traceability analysis |
 | No AC implemented without test | 30 | Diff analysis: new code path → test exists |
 | Tests are meaningful (not trivial) | 20 | QA Agent spot-check on new test files |
@@ -172,7 +174,7 @@ notes: "Security AC added by Security Agent: missing TLS verification check"
 **Decision:**
 
 | Score | Action |
-|---|---|
+| --- | --- |
 | ≥ 85 | Continue implementation — score logged |
 | 70–84 | Dev Agent pauses, identifies uncovered AC, writes missing tests before continuing |
 | < 70 | Dev Agent stops, queries QA Agent for test strategy, does not push until resolved |
@@ -180,6 +182,7 @@ notes: "Security AC added by Security Agent: missing TLS verification check"
 The score is tracked commit-by-commit. A declining score across commits triggers analysis before the next push.
 
 **Artifact** (`docs/gates/us-{id}/gate-2-{commit}.yaml`):
+
 ```yaml
 gate: COVERAGE
 us_id: 42
@@ -206,7 +209,7 @@ pending_ac:
 **Scoring:**
 
 | Check | Weight | How scored |
-|---|---|---|
+| --- | --- | --- |
 | SonarCloud coverage on new code | 25 | API: coverage ≥ 80% = 25, ≥ 70% = 15, < 70% = 0 |
 | Zero critical/high security findings | 25 | CodeQL + Semgrep: 0 = 25, 1 medium = 15, any high = 0 |
 | Linter clean | 20 | golangci-lint / eslint: 0 warnings = 20, each warning = -2 |
@@ -216,17 +219,19 @@ pending_ac:
 **Decision:**
 
 | Score | Action |
-|---|---|
+| --- | --- |
 | ≥ 85 | Pass — proceed to Gate 4 |
 | 70–84 | PR Review Agent documents specific gaps, fixes them on the branch, re-runs pipeline |
 | < 70 | PR Review Agent labels `needs-human-review`, documents exact failing items |
 
 **Hard blocks** (score = 0 regardless of other checks, immediate `needs-human-review`):
+
 - Any TruffleHog secret detection
 - Any `security` or `breaking-change` label on the PR
 - Any `flow-contract` label without coordinated cross-repo PRs opened
 
 **Artifact** (`docs/gates/us-{id}/gate-3.yaml`):
+
 ```yaml
 gate: QUALITY
 us_id: 42
@@ -253,7 +258,7 @@ linter_notes: "1 golangci-lint warning: unused parameter in test helper — nose
 **Scoring:**
 
 | Check | Weight | How scored |
-|---|---|---|
+| --- | --- | --- |
 | Gate 2 final score | 25 | Carried from last Gate 2 artifact |
 | Gate 3 score | 25 | Carried from Gate 3 artifact |
 | AC-to-test traceability | 25 | Every AC maps to ≥ 1 named test |
@@ -263,7 +268,7 @@ linter_notes: "1 golangci-lint warning: unused parameter in test helper — nose
 **Decision:**
 
 | Score | Action |
-|---|---|
+| --- | --- |
 | ≥ 85 | `auto-approved` — post summary comment, merge |
 | 60–84 | Agent documents specific doubts in PR comment, merges **only if doubts are fully documented** |
 | < 60 | `needs-human-review` — agent posts exact score breakdown and what would fix it |
@@ -271,6 +276,7 @@ linter_notes: "1 golangci-lint warning: unused parameter in test helper — nose
 The 60–84 band is intentional: the agent can merge with documented uncertainty. This avoids over-escalation on minor doubts while keeping full traceability.
 
 **Artifact** (`docs/gates/us-{id}/gate-4.yaml`):
+
 ```yaml
 gate: MERGE_CONFIDENCE
 us_id: 42
@@ -294,7 +300,7 @@ pr_url: https://github.com/flair-security/flair-agent/pull/42
 
 All gate artifacts are committed to the repo under `docs/gates/` and tracked in Git.
 
-```
+```text
 docs/gates/
 └── us-42/
     ├── gate-1.yaml          # Readiness — before implementation
@@ -324,7 +330,7 @@ git push origin --delete feat/us-{id}-{slug}
 ## PR labels
 
 | Label | Meaning |
-|---|---|
+| --- | --- |
 | `feat` | New feature |
 | `fix` | Bug fix |
 | `security` | Security impact — hard block on Gate 4, human review required |
@@ -343,7 +349,7 @@ git push origin --delete feat/us-{id}-{slug}
 ## OneFlow — branch rules
 
 | Type | Format | Lifetime |
-|---|---|---|
+| --- | --- | --- |
 | Feature / US | `feat/us-{id}-{slug}` | US duration — deleted after merge |
 | Bug fix | `fix/{id}-{slug}` | Fix duration — deleted after merge |
 | Release | `release/{version}` | Stabilisation — deleted after tag |
@@ -360,7 +366,8 @@ git push --force-with-lease origin feat/us-xxx
 ```
 
 **Good commit:**
-```
+
+```text
 feat(agent): detect gRPC via port 443 DPI
 
 Adds DPI fallback when port alone is ambiguous.
@@ -374,7 +381,7 @@ Covers HTTP/2 multiplexing over TLS on standard HTTPS port.
 ## Semantic Release
 
 | Prefix | Effect |
-|---|---|
+| --- | --- |
 | `feat:` | minor bump (0.x.0) |
 | `fix:` / `perf:` | patch bump (0.0.x) |
 | `feat!:` or `BREAKING CHANGE:` | major bump (x.0.0) |
@@ -385,7 +392,7 @@ Covers HTTP/2 multiplexing over TLS on standard HTTPS port.
 ## Git — absolute rules
 
 | Forbidden | Reason |
-|---|---|
+| --- | --- |
 | `--no-verify` | Bypasses quality hooks |
 | `git push --force` on `main` | Never — `--force-with-lease` on working branches only |
 | `git add .` in bulk | Risk of committing `.env`, keys, certificates |
@@ -414,7 +421,7 @@ After **2 failed attempts** (same strategy or close variants):
 ## FLAIR vs BMAD — positioning
 
 | Dimension | BMAD | FLAIR |
-|---|---|---|
+| --- | --- | --- |
 | Agent roles | ✅ | ✅ |
 | Central orchestrator | ✅ | ✅ |
 | Parallel agents | ✅ | ✅ |

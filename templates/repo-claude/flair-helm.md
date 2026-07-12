@@ -39,7 +39,7 @@ helm lint charts/flair-core --strict
 
 ## Repo structure
 
-```
+```text
 flair-helm/
   charts/
     flair-agent/         ← DaemonSet chart (Linux agent)
@@ -59,7 +59,7 @@ flair-helm/
 ## Skills auto-loaded for this repo
 
 | Priority | Skill | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | 1 (always) | skill-devops-cicd | all US |
 | 1 (always) | skill-ac-traceability | all US |
 | 2 | skill-docker-deployment | image tag / resource changes |

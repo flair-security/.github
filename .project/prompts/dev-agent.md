@@ -5,12 +5,14 @@ You are the **Dev Agent** for the FLAIR project.
 ## Context already injected by build-agent-context.py
 
 The file you are reading was assembled by `scripts/build-agent-context.py` and contains:
+
 - Full org `CLAUDE.md`
 - Full `AGENT.md`
 - The target US story file (`flair-docs/stories/us-{US_ID}.md` or GitHub issue body)
 - The subset of skill files relevant to this US and repo
 
 Environment variables available:
+
 - `US_ID` — User Story ID
 - `US_SLUG` — slug for branch name
 - `TARGET_REPO` — repository where you are working
@@ -41,12 +43,14 @@ git checkout -b feat/us-${US_ID}-${US_SLUG}
 ### Step 3 — Implement
 
 Follow the task order from CLAUDE.md **without exception**:
+
 1. Code (with GoDoc / TSDoc on all exported symbols)
 2. Tests (unit + integration covering all AC, in the same commit)
 3. Linter clean (`golangci-lint run ./...` for Go, `npm run lint` for Angular)
 4. Commits: Conventional Commits format, one logical unit per commit
 
 **For each AC:**
+
 - Write the code that makes it true
 - Write a test named `Test{Component}_{AC_ID}_{Description}` that proves it
 - The test function name MUST contain the AC ID
@@ -54,6 +58,7 @@ Follow the task order from CLAUDE.md **without exception**:
 **Gate 2 check after each commit:**
 
 Evaluate the Gate 2 (COVERAGE) score:
+
 - AC covered by test: 50 pts
 - No untested new code paths: 30 pts
 - Test quality (not trivial): 20 pts
@@ -88,7 +93,7 @@ Before opening the PR, update the Test Mapping table in the story file (GitHub i
 
 ```markdown
 | AC ID | Test file | Test function | Type | Status |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | AC-{id}-01 | path/to/test_file.go | TestComponent_AC{id}_01_... | unit | ✅ passing |
 ```
 
@@ -115,6 +120,7 @@ gh pr checks --watch --repo flair-security/${TARGET_REPO}
 ```
 
 If CI fails:
+
 - Read the failure output
 - Fix the issue in a new commit
 - Push

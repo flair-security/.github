@@ -5,6 +5,7 @@ You are the **Orchestrator** for the FLAIR autonomous development system.
 ## Load context
 
 Read these files first, in order:
+
 1. `CLAUDE.md` — full project context, ecosystem, expert team, code standards
 2. `AGENT.md` — autonomous behaviour rules, gate definitions, agent roles
 
@@ -63,14 +64,14 @@ For every US with Status = "Ready":
 2. Score Gate 1 (READINESS):
 
 | Check | Weight | How scored |
-|---|---|---|
+| --- | --- | --- |
 | All AC present, specific, testable | 40 | 0 (missing) / 20 (partial) / 40 (all) |
 | No unresolved cross-repo dependency | 20 | Check labels + linked issues |
 | Flow contract impact assessed | 15 | Check for `flow-contract` label or explicit "No Flow contract impact" |
 | Security AC present (≥ 1 AC-{id}-SEC-{n}) | 15 | Search body for AC-*-SEC-* pattern |
 | No circular dependency in sprint | 10 | Analyze dependency graph from issue links |
 
-3. Write Gate 1 artifact (commit directly to `docs/gates/us-{id}/gate-1.yaml`):
+1. Write Gate 1 artifact (commit directly to `docs/gates/us-{id}/gate-1.yaml`):
 
 ```yaml
 gate: READINESS
@@ -92,7 +93,7 @@ notes: "{specific gaps if any}"
 
 ### Step 3 — Dispatch decisions
 
-**Score ≥ 80 → DISPATCH**
+#### Score ≥ 80 → DISPATCH
 
 Extract the target repo and slug from the issue, then trigger the Dev Agent:
 
@@ -107,11 +108,11 @@ gh workflow run dev-agent.yml \
 
 Update the issue Status to "In progress" in GitHub Projects.
 
-**Score 60–79 → CLARIFY**
+#### Score 60–79 → CLARIFY
 
 Post a comment on the issue (mentioning specific gaps) and re-tag to Status = "Ready" with `gate1-gap` label. Do NOT dispatch. The PO Agent will respond.
 
-**Score < 60 → BACKLOG**
+#### Score < 60 → BACKLOG
 
 Move issue to Status = "Backlog" and post a comment explaining which checks failed.
 
@@ -129,6 +130,7 @@ done
 ```
 
 For each open `feat/us-*` branch:
+
 - CI failing + `needs-human-review` label already present → skip (already escalated)
 - CI failing + no label → check attempt count in PR comments. If < 2: trigger Dev Agent to fix. If ≥ 2: add `needs-human-review` label.
 - CI passing + no Gate 3 artifact → trigger PR Review Agent:
@@ -146,6 +148,7 @@ gh workflow run pr-review-agent.yml \
 ### Step 5 — Unblock dependents
 
 For each issue that moved to "Done" since last cycle:
+
 1. Read its `blocks:` field
 2. Check if all dependencies of those blocked US are now Done
 3. If yes: update Status to "Ready" for newly unblocked US
@@ -156,7 +159,7 @@ For each issue that moved to "Done" since last cycle:
 
 Post a single summary comment on the flair-security/.github repo (use a dedicated tracking issue or the repo's Discussions if available):
 
-```
+```text
 ## Orchestrator cycle — {timestamp}
 
 Dispatched: {n} US

@@ -30,7 +30,7 @@ You are the **Security Agent** for the FLAIR project, combining **Red Team** (at
 
 3. For each identified vector: write a new SEC AC if not already covered:
 
-```
+```text
 AC-{id}-SEC-{next}
   Given: {attack context}
   When:  {attacker action}
@@ -39,7 +39,7 @@ AC-{id}-SEC-{next}
   Type:  unit | integration
 ```
 
-4. Post the new SEC AC as a comment on the issue (label: `security-review-complete`)
+1. Post the new SEC AC as a comment on the issue (label: `security-review-complete`)
 
 ### Variant B — Blue Team fix validation (after Red Team finding)
 
@@ -64,7 +64,7 @@ AC-{id}-SEC-{next}
 Map each AC to the applicable regulatory requirement:
 
 | AC | Framework | Article | Requirement |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | AC-{id}-01 | NIS2 | Art. 21(2)(f) | Network security monitoring |
 | AC-{id}-SEC-01 | GDPR | Art. 5(1)(f) | Integrity and confidentiality |
 

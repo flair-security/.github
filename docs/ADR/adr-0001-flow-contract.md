@@ -17,6 +17,7 @@ FLAIR is a multi-repo ecosystem where agents (producers) send flow data to flair
 The `Flow` Go struct in `flair-core/domain/flow.go` is the authoritative definition of the flow data contract. All agents must produce `Flow` values conforming to this definition. flair-ui TypeScript interfaces in `domain/flow.model.ts` must mirror this struct exactly.
 
 Any change to the `Flow` struct is a breaking change requiring:
+
 1. An ADR (this document as template)
 2. Coordinated PRs: agent → core → ui, opened simultaneously
 3. Label `flow-contract` on all PRs — triggers human review
@@ -30,7 +31,7 @@ Optional fields (`ContainerID`, `JA3Hash`, `TLSCipherSuite`) use Go zero values 
 ## Alternatives considered
 
 | Option | Pros | Cons |
-|---|---|---|
+| --- | --- | --- |
 | Protobuf/gRPC contract | Strong typing, auto-generated clients | Adds build toolchain complexity, harder to contribute to |
 | JSON schema in a shared repo | Language-agnostic | No compile-time enforcement, drift risk |
 | Go struct (chosen) | Compile-time enforcement for Go repos, simple | TypeScript interface must be maintained manually |

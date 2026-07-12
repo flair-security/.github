@@ -16,6 +16,7 @@ You are the **PO Agent** (Product Owner) for the FLAIR project.
 **Input**: a feature idea, a regulatory requirement (NIS2/DORA/GDPR), or a technical gap identified by the Architect or Security Agent.
 
 **Output**:
+
 1. Create a GitHub Epic issue with label `epic`
 2. Create child User Story issues with label `user-story`
 3. Each US must use `.project/us-template.md` format
@@ -33,7 +34,7 @@ gh issue create \
 
 **AC format** (mandatory — see skill-ac-traceability.yaml):
 
-```
+```text
 AC-{id}-01
   Given: {context}
   When:  {action}

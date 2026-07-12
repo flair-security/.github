@@ -13,6 +13,7 @@
 Concise and direct. Technically precise. No unnecessary recaps.
 
 **Exceptions — structured responses with full context:**
+
 - Writing or reviewing User Stories / Epics
 - Cross-repo architecture decisions (the `Flow` contract)
 - Security or regulatory advice, or irreversible actions (explicit confirmation required)
@@ -27,7 +28,7 @@ Concise and direct. Technically precise. No unnecessary recaps.
 Read the following docs **only when the task requires it:**
 
 | Doc | Read when… |
-|---|---|
+| --- | --- |
 | `profile/README.md` | modifying the GitHub organisation profile |
 | `.github/ISSUE_TEMPLATE/` | creating or modifying issue templates |
 | `docs/ARCHITECTURE.md` | cross-repo decision, modifying the `Flow` contract |
@@ -50,7 +51,7 @@ Read the following docs **only when the task requires it:**
 ## Ecosystem — repos and technologies
 
 | Repo | Role | Technologies |
-|---|---|---|
+| --- | --- | --- |
 | `flair-agent` | Linux eBPF agent — capture, protocol, TLS | Go, C, eBPF (`cilium/ebpf`), libbpf |
 | `flair-core` | Central server — graph, scoring, REST API, auth | Go, PostgreSQL, Apache AGE, `coreos/go-oidc`, swaggo |
 | `flair-ui` | Web interface — flow map, RSSI dashboard | Angular, TypeScript, D3.js, RxJS |
@@ -85,7 +86,7 @@ docker compose -f docker-compose.dev.yml up
 **Rule**: dev and unit tests on Docker Desktop, full eBPF validation on a Linux test server.
 
 | Repo | Dev Docker services |
-|---|---|
+| --- | --- |
 | `flair-core` | PostgreSQL + Apache AGE, core in watch mode |
 | `flair-ui` | Angular dev server (hot reload), proxy to flair-core |
 | `flair-agent` | Privileged Linux container with host kernel access |
@@ -150,7 +151,7 @@ Optional fields (`ContainerID`, `JA3Hash`, `TLSCipherSuite`): zero value is acce
 Each contribution mobilises the relevant experts. Mention them explicitly in the response.
 
 | Expert | Domain |
-|---|---|
+| --- | --- |
 | **Go Software Architect** | Package architecture, interfaces, patterns (Repository, Factory, Strategy), SOLID, coupling/cohesion |
 | **Database Architect** | PostgreSQL + Apache AGE schema, graph model, indexes, migrations, referential integrity |
 | **eBPF / Linux Kernel Expert** | eBPF C programs, `cilium/ebpf`, Linux capabilities, network namespaces, kernel edge cases |
@@ -173,7 +174,7 @@ Each contribution mobilises the relevant experts. Mention them explicitly in the
 ## Calling experts
 
 | Task type | Expert(s) |
-|---|---|
+| --- | --- |
 | Go package architecture, interfaces, patterns | **Go Software Architect** |
 | DB schema, graph, PostgreSQL/AGE migrations | **Database Architect** |
 | eBPF programs, packet capture, capabilities | **eBPF / Linux Kernel Expert** |
@@ -192,6 +193,7 @@ Each contribution mobilises the relevant experts. Mention them explicitly in the
 | Unknown-origin bug | **Go Software Architect** first, then **Red Team Expert** if security suspected |
 
 **Rules:**
+
 - Always mention the expert explicitly when their domain is involved.
 - Any Red Team finding must be fixed by the Blue Team **before any merge**.
 - A `Flow` contract change requires all three chain experts without exception.
@@ -213,6 +215,7 @@ Before any implementation, explicitly confirm two points with the PO:
 **Why**: acceptance criteria define the exact implementation scope. A poorly framed criterion upfront means code to rewrite. The PO validates criteria **before** any production code is written.
 
 **Exceptions** (no consultation required):
+
 - Security fixes on existing code with an immediately exploitable vector
 - Syntax / linter / broken test fixes blocking CI
 - Bug fixes with a clearly identified root cause and no ambiguous scope
@@ -224,7 +227,7 @@ Before any implementation, explicitly confirm two points with the PO:
 For each feature or fix, follow this order **without exception:**
 
 | Step | Content |
-|---|---|
+| --- | --- |
 | **1. Code** | Implement (service, handler, repository…) + GoDoc / TSDoc |
 | **2. Tests** | Write unit + integration tests covering all branches — **in the same commit** |
 | **3. Quality** | Linter and static analysis must be green |
@@ -244,7 +247,7 @@ For each feature or fix, follow this order **without exception:**
 Run as many independent actions in parallel as possible in each turn to accelerate development:
 
 | Parallelisable actions | Examples |
-|---|---|
+| --- | --- |
 | Independent reads | Multiple file reads / grep / glob in the same turn |
 | Linters | `golangci-lint` + `go vet` launched simultaneously |
 | Independent file writes | Multiple files in parallel (e.g. unit tests + integration tests for the same feature) |
@@ -257,22 +260,26 @@ Only sequence steps that depend on the result of a previous one.
 ## Code standards
 
 ### Go (`flair-agent`, `flair-core`, `flair-sdk-go`)
+
 - GoDoc required on all exported functions and methods
 - `gofmt` + `golangci-lint` — no warning ignored without a commented justification
 - Explicit error handling — no `_` on returned errors
 - No global init with side effects — dependencies passed explicitly
 
 ### Angular (`flair-ui`)
+
 - Strict TypeScript — no `any`
 - OnPush change detection by default
 - RxJS for async — no Promise except for interop
 - WCAG 2.1 AA on all interactive elements
 
 ### Terraform (`flair-terraform-*`)
+
 - `terraform fmt` + `terraform validate` before every commit
 - No hardcoded values — all via typed, described variables
 
 ### General
+
 - Conventional Commits: `type(scope): message`
   - Types: `feat` | `fix` | `chore` | `docs` | `refactor` | `test` | `ci` | `perf` | `security`
 - Co-author on every commit: `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
@@ -281,6 +288,7 @@ Only sequence steps that depend on the result of a previous one.
 - Every `flair-core` API action → structured JSON log line to stdout
 
 ### Quality annotations
+
 - SonarCloud false positives: `// NOSONAR — <short justification>` (justification required)
 - Semgrep false positives: `// nosemgrep: <rule-id>`
 
@@ -290,7 +298,7 @@ Only sequence steps that depend on the result of a previous one.
 
 Sequential GitHub Actions pipeline — a failure blocks all subsequent steps.
 
-```
+```text
 push / PR
     │
     ├── 1. Build          compile binary / Docker image + size check (flair-agent: < 20 MB)
@@ -318,6 +326,7 @@ The Project aggregates issues from all repos into a single unified view.
 Sprints are **prioritisation groups** with no fixed duration. A sprint closes when its User Stories are merged to `main`.
 
 Priority order (descending):
+
 1. Security (vulnerability, FLAIR non-negotiable)
 2. Cross-repo contract breaking (unblocking)
 3. Core functional value (MVP)
@@ -325,7 +334,7 @@ Priority order (descending):
 
 ### Issue hierarchy
 
-```
+```text
 Epic (parent issue, label "epic")
 └── User Stories / Enablers (child issues, linked via "tracked by")
 ```
@@ -349,7 +358,7 @@ Epic (parent issue, label "epic")
 ### Project custom fields
 
 | Field | Type | Values |
-|---|---|---|
+| --- | --- | --- |
 | Status | Single select | Backlog / Ready / In progress / Review / Done |
 | Priority | Single select | Critical / High / Medium / Low |
 | Repo | Single select | flair-agent / flair-core / flair-ui / ... |
@@ -358,6 +367,7 @@ Epic (parent issue, label "epic")
 | Sprint | Iteration | prioritisation groups, no fixed duration |
 
 **If an untracked need is expressed**, the PO/Scrum Master must immediately:
+
 1. Identify the relevant Epic (or create one)
 2. Create the US issue with the full template
 3. Add it to the Project with the correct fields
@@ -372,7 +382,7 @@ Never implement without a traceable issue.
 In `docs/audits/` of the `.github` repo — one file per category, updated in place. Never create dated files.
 
 | Category | File |
-|---|---|
+| --- | --- |
 | Application security | `audits/audit-cyber.md` |
 | eBPF / Kernel | `audits/audit-ebpf.md` |
 | Software architecture | `audits/audit-architecture.md` |
@@ -383,15 +393,17 @@ In `docs/audits/` of the `.github` repo — one file per category, updated in pl
 | Documentation | `audits/audit-docs.md` |
 
 Revision history at the bottom of each file:
+
 ```markdown
 ## Revision history
 
 | Version | Date | Score | Key changes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | v1 | YYYY-MM-DD | X.X/10 | Initial audit |
 ```
 
 **Forbidden:**
+
 - ❌ Creating `audit-cyber-2026-06-18.md` → always update `audit-cyber.md`
 - ❌ Creating any audit file outside `docs/audits/`
 

@@ -39,7 +39,7 @@ controller-gen crd:generateEmbeddedObjectMeta=true paths="./..." output:crd:dir=
 
 ## Repo structure
 
-```
+```text
 flair-agent-k8s/
   cmd/flair-agent-k8s/    ← entrypoint, controller-runtime manager
   internal/
@@ -60,7 +60,7 @@ flair-agent-k8s/
 ## Key differences from flair-agent (bare metal)
 
 | Aspect | flair-agent | flair-agent-k8s |
-|---|---|---|
+| --- | --- | --- |
 | Deployment | systemd | DaemonSet |
 | Metadata | process name + PID | pod name + namespace + workload |
 | Enrichment | ContainerID from cgroups | ContainerID + Kubernetes metadata |
@@ -73,7 +73,7 @@ flair-agent-k8s/
 ## Skills auto-loaded for this repo
 
 | Priority | Skill | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | 1 (always) | skill-solid-go | all US |
 | 1 (always) | skill-error-handling | all US |
 | 1 (always) | skill-ac-traceability | all US |

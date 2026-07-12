@@ -18,6 +18,7 @@ You are the **QA Agent** for the FLAIR project.
 **Input**: a US issue number.
 
 For each AC in the issue:
+
 1. Can it be tested automatically? (unit / integration / e2e)
 2. Is the "Then" observable and assertable in code?
 3. Is the "Given" state reproducible in a test?
@@ -43,6 +44,7 @@ Untestable AC is a Gate 1 gap (security_ac or ac_quality score reduced).
 **Input**: a merged US or a US approaching completion.
 
 Write Playwright E2E specs for:
+
 - Happy path (the main AC flow)
 - One critical error path
 
