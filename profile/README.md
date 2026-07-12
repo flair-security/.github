@@ -6,6 +6,7 @@
 
 # FLAIR
 
+<!-- markdownlint-disable-next-line MD036 -- tagline, not a heading -->
 **Flow and Link Analysis with Inspection Report**
 
 Open source security observability for application network flows.
@@ -13,8 +14,8 @@ See every flow. Expose every risk.
 
 [![License: GPL v3 / Apache 2.0](https://img.shields.io/badge/license-GPLv3%20%2F%20Apache--2.0-blue.svg)](#license)
 [![OpenSSF Best Practices](https://img.shields.io/badge/OpenSSF-in%20progress-yellow)](https://www.bestpractices.dev/)
-[![Status](https://img.shields.io/badge/status-early%20development-orange)]()
-[![NIS2 / DORA aligned](https://img.shields.io/badge/regulatory%20focus-NIS2%20%C2%B7%20DORA-2ea44f)]()
+![Status](https://img.shields.io/badge/status-early%20development-orange)
+![NIS2 / DORA aligned](https://img.shields.io/badge/regulatory%20focus-NIS2%20%C2%B7%20DORA-2ea44f)
 
 </div>
 
@@ -51,36 +52,35 @@ FLAIR is split into focused repositories. Each one does one thing, has its own r
 ### Core
 
 | | Repository | What it does | Status | Stack | License |
-|:---:|:-----------|:-------------|:-------|:------|:--------|
-| <img src="../resources/images/flair_agent.png" width="160"/> | [`flair-agent`](https://github.com/flair-sec/flair-agent) | eBPF-based agent for Linux — captures flows, detects protocols, fingerprints TLS (JA3) | 🚧 MVP in progress | Go, eBPF (cilium/ebpf), C | GPL v3 |
-| <img src="../resources/images/flair_core.png" width="160"/> | [`flair-core`](https://github.com/flair-sec/flair-core) | Central server — flow graph, security scoring, REST API, webhooks, auth | 🚧 MVP in progress | Go, PostgreSQL + Apache AGE | GPL v3 |
-| <img src="../resources/images/flair_ui.png" width="160"/> | [`flair-ui`](https://github.com/flair-sec/flair-ui) | Web interface — interactive flow map for RSSIs and auditors | 🚧 MVP in progress | React, D3.js, TypeScript | Apache 2.0 |
+| :---: | :----------- | :------------- | :------- | :------ | :-------- |
+| <img src="../resources/images/flair_agent.png" alt="flair-agent logo" width="160"/> | [`flair-agent`](https://github.com/flair-sec/flair-agent) | eBPF-based agent for Linux — captures flows, detects protocols, fingerprints TLS (JA3) | 🚧 MVP in progress | Go, eBPF (cilium/ebpf), C | GPL v3 |
+| <img src="../resources/images/flair_core.png" alt="flair-core logo" width="160"/> | [`flair-core`](https://github.com/flair-sec/flair-core) | Central server — flow graph, security scoring, REST API, webhooks, auth | 🚧 MVP in progress | Go, PostgreSQL + Apache AGE | GPL v3 |
+| <img src="../resources/images/flair_ui.png" alt="flair-ui logo" width="160"/> | [`flair-ui`](https://github.com/flair-sec/flair-ui) | Web interface — interactive flow map for RSSIs and auditors | 🚧 MVP in progress | React, D3.js, TypeScript | Apache 2.0 |
 
 ### Platform reach
 
 | | Repository | What it does | Status | Stack | License |
-|:---:|:-----------|:-------------|:-------|:------|:--------|
-| <img src="../resources/images/flair_agent-windows.png" width="150"/> | [`flair-agent-windows`](https://github.com/flair-sec/flair-agent-windows) | Windows agent (ETW + Npcap) — same flow data contract as the Linux agent | 💡 Future | Go, ETW, Npcap | GPL v3 |
-| <img src="../resources/images/flair_helm.png" width="150"/> | [`flair-helm`](https://github.com/flair-sec/flair-helm) | Official Helm chart — agent as DaemonSet, core server, ingress, one command | 📋 Planned | Helm, Kubernetes YAML | Apache 2.0 |
-| <img src="../resources/images/flair_agent-k8s.png" width="150"/> | [`flair-agent-k8s`](https://github.com/flair-sec/flair-agent-k8s) | Kubernetes-native sidecar variant of the agent | 💡 Future | Go, eBPF | GPL v3 |
+| :---: | :----------- | :------------- | :------- | :------ | :-------- |
+| <img src="../resources/images/flair_agent-windows.png" alt="flair-agent-windows logo" width="150"/> | [`flair-agent-windows`](https://github.com/flair-sec/flair-agent-windows) | Windows agent (ETW + Npcap) — same flow data contract as the Linux agent | 💡 Future | Go, ETW, Npcap | GPL v3 |
+| <img src="../resources/images/flair_helm.png" alt="flair-helm logo" width="150"/> | [`flair-helm`](https://github.com/flair-sec/flair-helm) | Official Helm chart — agent as DaemonSet, core server, ingress, one command | 📋 Planned | Helm, Kubernetes YAML | Apache 2.0 |
+| <img src="../resources/images/flair_agent-k8s.png" alt="flair-agent-k8s logo" width="150"/> | [`flair-agent-k8s`](https://github.com/flair-sec/flair-agent-k8s) | Kubernetes-native sidecar variant of the agent | 💡 Future | Go, eBPF | GPL v3 |
 
 ### Cloud deployment
 
 | | Repository | What it does | Status | Stack | License |
-|:---:|:-----------|:-------------|:-------|:------|:--------|
-| <img src="../resources/images/flair_terraform-aws.png" width="80"/> | [`flair-terraform-aws`](https://github.com/flair-sec/flair-terraform-aws) | Terraform modules to provision FLAIR on AWS | 💡 Future | Terraform (HCL) | Apache 2.0 |
-| <img src="../resources/images/flair_terraform-azure.png" width="80"/> | [`flair-terraform-azure`](https://github.com/flair-sec/flair-terraform-azure) | Terraform modules to provision FLAIR on Azure | 💡 Future | Terraform (HCL) | Apache 2.0 |
-| <img src="../resources/images/flair_terraform-gcp.png" width="80"/> | [`flair-terraform-gcp`](https://github.com/flair-sec/flair-terraform-gcp) | Terraform modules to provision FLAIR on GCP | 💡 Future | Terraform (HCL) | Apache 2.0 |
-
+| :---: | :----------- | :------------- | :------- | :------ | :-------- |
+| <img src="../resources/images/flair_terraform-aws.png" alt="flair-terraform-aws logo" width="80"/> | [`flair-terraform-aws`](https://github.com/flair-sec/flair-terraform-aws) | Terraform modules to provision FLAIR on AWS | 💡 Future | Terraform (HCL) | Apache 2.0 |
+| <img src="../resources/images/flair_terraform-azure.png" alt="flair-terraform-azure logo" width="80"/> | [`flair-terraform-azure`](https://github.com/flair-sec/flair-terraform-azure) | Terraform modules to provision FLAIR on Azure | 💡 Future | Terraform (HCL) | Apache 2.0 |
+| <img src="../resources/images/flair_terraform-gcp.png" alt="flair-terraform-gcp logo" width="80"/> | [`flair-terraform-gcp`](https://github.com/flair-sec/flair-terraform-gcp) | Terraform modules to provision FLAIR on GCP | 💡 Future | Terraform (HCL) | Apache 2.0 |
 
 ### Integrations & community
 
 | | Repository | What it does | Status | Stack | License |
-|:---:|:-----------|:-------------|:-------|:------|:--------|
-| <img src="../resources/images/flair_sdk-go.png" width="120"/> | [`flair-sdk-go`](https://github.com/flair-sec/flair-sdk-go) | Go client for the `flair-core` API | 💡 Future | Go | Apache 2.0 |
-| <img src="../resources/images/flair_sdk-python.png" width="120"/> | [`flair-sdk-python`](https://github.com/flair-sec/flair-sdk-python) | Python client for the `flair-core` API | 💡 Future | Python | Apache 2.0 |
-| <img src="../resources/images/flair_rules.png" width="120"/> | [`flair-rules`](https://github.com/flair-sec/flair-rules) | Community-maintained detection & scoring rules | 💡 Future | YAML | CC0 |
-| <img src="../resources/images/flair_docs.png" width="120"/> | [`flair-docs`](https://github.com/flair-sec/flair-docs) | Documentation — architecture, deployment, API reference | 📋 Planned | Docusaurus / Markdown | CC BY 4.0 |
+| :---: | :----------- | :------------- | :------- | :------ | :-------- |
+| <img src="../resources/images/flair_sdk-go.png" alt="flair-sdk-go logo" width="120"/> | [`flair-sdk-go`](https://github.com/flair-sec/flair-sdk-go) | Go client for the `flair-core` API | 💡 Future | Go | Apache 2.0 |
+| <img src="../resources/images/flair_sdk-python.png" alt="flair-sdk-python logo" width="120"/> | [`flair-sdk-python`](https://github.com/flair-sec/flair-sdk-python) | Python client for the `flair-core` API | 💡 Future | Python | Apache 2.0 |
+| <img src="../resources/images/flair_rules.png" alt="flair-rules logo" width="120"/> | [`flair-rules`](https://github.com/flair-sec/flair-rules) | Community-maintained detection & scoring rules | 💡 Future | YAML | CC0 |
+| <img src="../resources/images/flair_docs.png" alt="flair-docs logo" width="120"/> | [`flair-docs`](https://github.com/flair-sec/flair-docs) | Documentation — architecture, deployment, API reference | 📋 Planned | Docusaurus / Markdown | CC BY 4.0 |
 
 **Legend:** 🚧 active development · 📋 planned, not started yet · 💡 on the roadmap, not scoped in detail
 
@@ -215,17 +215,20 @@ If you're working on `flair-agent-windows` or `flair-agent-k8s`, the goal is alw
 These three interfaces are the seams where FLAIR is expected to grow. The MVP implementation can be simple, but the *interface* must exist so the simple implementation can be swapped without rewriting calling code.
 
 **`GraphStore`** — persistence and graph queries.
+
 - MVP / dev: SQLite
 - Target for v1 enterprise: **PostgreSQL + Apache AGE** (one engine for relational data — users, config, audit logs — and graph traversal via Cypher)
 - Calling code (scoring, API handlers) talks to `GraphStore`, never to `database/sql` or AGE-specific queries directly
 
 **`AuthProvider`** — user authentication for `flair-ui`.
+
 - MVP: local users (username/password)
 - Primary target: **OIDC client** (`coreos/go-oidc`) — OIDC is the majority protocol for enterprise IdPs today (Entra ID, Okta, Google Workspace)
 - SAML/LDAP/legacy Active Directory: **not implemented in `flair-core`**. Document that organizations should front `flair-core` with an OIDC broker (Dex, Keycloak, Authentik) if they need SAML — `flair-docs` provides a reference `docker-compose` with Dex for this
 - SCIM (automated user provisioning/deprovisioning from the IdP) is a planned `AuthProvider`-adjacent feature, out of scope for MVP
 
 **`IngestQueue`** — how `flair-core` receives `Flow` batches from agents.
+
 - MVP: agents POST batches directly to a `flair-core` ingestion endpoint, written to `GraphStore` synchronously
 - At scale (large fleets): a message queue (NATS is the leading candidate) sits between agents and `flair-core`, decoupling ingestion rate from write throughput
 - This is explicitly **not a near-term priority** — the interface should exist so the swap is mechanical when the need arises, but don't over-engineer it now

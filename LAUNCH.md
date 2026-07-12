@@ -25,7 +25,7 @@ pip install pyyaml requests
 
 **Repos clonés côte à côte :**
 
-```
+```text
 parent/
   flair-security/.github/   ← ce repo
   flair-agent/
@@ -120,7 +120,7 @@ python3 scripts/check-backlog.py --format json          # JSON
 ## Rôle des GitHub Actions
 
 | Workflow | Ce qu'il fait |
-|---|---|
+| --- | --- |
 | `validate.yml` | Lint YAML + skills à chaque push |
 | `auto-label.yml` | Labels automatiques sur issues/PRs |
 | `scorecard.yml` | OpenSSF Scorecard hebdomadaire |
@@ -156,7 +156,7 @@ git push origin main
 ## Secrets GitHub (CI uniquement)
 
 | Secret | Scope | Usage |
-|---|---|---|
+| --- | --- | --- |
 | `GH_TOKEN_PROJECTS` | `project`, `read:org` | `check-backlog.py` dans orchestrator.yml |
 | `GH_TOKEN_REPOS` | `repo` | Création branches dans dev-agent.yml |
 

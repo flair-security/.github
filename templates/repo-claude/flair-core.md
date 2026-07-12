@@ -46,7 +46,7 @@ buf generate
 
 ## Repo structure
 
-```
+```text
 flair-core/
   cmd/flair-core/       ← entrypoint, server bootstrap
   internal/
@@ -94,7 +94,7 @@ type ScoringEngine interface {
 ## Skills auto-loaded for this repo
 
 | Priority | Skill | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | 1 (always) | skill-solid-go | all US |
 | 1 (always) | skill-go-service-layer | all US |
 | 1 (always) | skill-error-handling | all US |

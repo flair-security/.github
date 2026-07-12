@@ -12,7 +12,7 @@ FLAIR is a self-hosted, single-tenant application flow mapping platform.
 It captures network flows at the OS level, enriches them with protocol and TLS metadata,
 stores them in a graph database, and exposes a scoring and alerting interface for security teams.
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    Organisation network                      │
 │                                                             │
@@ -111,6 +111,7 @@ Optional fields (`ContainerID`, `JA3Hash`, `TLSCipherSuite`): zero value is acce
 `Metadata` is intentionally open — do not add dedicated columns for concepts that belong here.
 
 Breaking changes to the Flow contract require:
+
 1. An ADR in `docs/ADR/`
 2. Coordinated PRs across all affected repos opened simultaneously
 3. Label `flow-contract` on all PRs
@@ -123,7 +124,7 @@ These interfaces allow swapping implementations without changing callers.
 Implementations live in `flair-core/infrastructure/` only.
 
 | Interface | MVP implementation | Target |
-|---|---|---|
+| --- | --- | --- |
 | `GraphStore` (Reader + Writer) | SQLite (dev/test) | PostgreSQL + Apache AGE |
 | `AuthProvider` | Local dev OIDC (Dex) | Coreos go-oidc (Entra ID, Okta, Keycloak...) |
 | `IngestQueue` | Direct PostgreSQL write | NATS (at scale) |
@@ -133,7 +134,7 @@ Implementations live in `flair-core/infrastructure/` only.
 ## Authentication model
 
 | Actor | Method | Token lifetime |
-|---|---|---|
+| --- | --- | --- |
 | Human user (RSSI, admin) | OIDC + Bearer JWT | 15 min access + 8h refresh |
 | flair-agent | mTLS client certificate | 90 days, auto-renewed |
 | Webhook receiver | HMAC-SHA256 signature | Per-request |
@@ -165,13 +166,14 @@ Agent enrollment flow: admin generates single-use token (1h TTL) → agent sends
 Scores are 0–100 per flow. Lower = higher risk.
 
 | Strategy | Weight | Key signals |
-|---|---|---|
+| --- | --- | --- |
 | TLS version | 40% | TLS 1.3 = 100, unencrypted = 0 |
 | Cipher suite | 20% | Weak cipher = 0 |
 | Protocol | 25% | gRPC/HTTPS = high, HTTP = low |
 | Zone crossing | 15% | Same zone = 100, EXTERNAL→DATA = 0 |
 
 Hard penalties override the weighted score:
+
 - Unencrypted + cross-zone → max 15
 - Weak cipher detected → max 25
 - TLS 1.0/1.1 → max 30

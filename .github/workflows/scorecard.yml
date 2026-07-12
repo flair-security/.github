@@ -4,31 +4,37 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "0 8 * * 1"  # Every Monday
+    - cron: '0 6 * * 1'   # Monday 6am UTC
 
 permissions: read-all
 
 jobs:
   scorecard:
-    name: Scorecard analysis
+    name: OpenSSF Scorecard
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       security-events: write
       id-token: write
+      contents: read
+      actions: read
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
       - name: Run Scorecard
-        uses: ossf/scorecard-action@v2.3.1
+        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
         with:
           results_file: scorecard-results.sarif
           results_format: sarif
           publish_results: true
 
-      - name: Upload SARIF results
-        uses: github/codeql-action/upload-sarif@v3
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        if: always()
         with:
           sarif_file: scorecard-results.sarif
+          category: openssf-scorecard

@@ -46,7 +46,7 @@ npx tsc --noEmit
 
 ## Repo structure
 
-```
+```text
 flair-ui/
   src/
     app/
@@ -108,7 +108,7 @@ export class TopologyService {
 ## Skills auto-loaded for this repo
 
 | Priority | Skill | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | 1 (always) | skill-angular-security | all US |
 | 1 (always) | skill-ac-traceability | all US |
 | 2 | skill-ux-ui-design | visual / UX changes |

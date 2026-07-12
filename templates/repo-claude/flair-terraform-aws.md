@@ -44,7 +44,7 @@ terraform-docs markdown . > README.md
 
 ## Repo structure
 
-```
+```text
 flair-terraform-aws/
   modules/
     flair-eks/          ← EKS cluster (managed node groups, IRSA, add-ons)
@@ -68,7 +68,7 @@ flair-terraform-aws/
 ## Skills auto-loaded for this repo
 
 | Priority | Skill | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | 1 (always) | skill-devops-cicd | all US |
 | 1 (always) | skill-ac-traceability | all US |
 

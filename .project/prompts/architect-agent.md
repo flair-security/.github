@@ -63,6 +63,7 @@ You are the **Architect Agent** for the FLAIR project.
 **Input**: a new architectural decision to document.
 
 Create `docs/ADR/adr-{next_id}-{slug}.md` following the existing ADR format:
+
 - Title, Date, Status (Proposed), Deciders
 - Context, Decision, Alternatives, Consequences
 - Link to related FLAIR non-negotiables

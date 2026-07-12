@@ -33,7 +33,7 @@ yamllint rules/
 
 ## Repo structure
 
-```
+```text
 flair-rules/
   rules/
     network/            ← lateral movement, port scans, beacon patterns
@@ -82,7 +82,7 @@ references:
 ## Skills auto-loaded for this repo
 
 | Priority | Skill | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | 1 (always) | skill-ac-traceability | all US |
 | 2 | skill-security-scoring | scoring logic / new rule categories |
 

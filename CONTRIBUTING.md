@@ -40,21 +40,26 @@ security posture faster? If yes, it is likely a good fit for FLAIR.
 ## Ways to contribute
 
 ### Report a bug
+
 Open a [bug report](.github/ISSUE_TEMPLATE/bug_report.yml).
 Include your FLAIR version, platform, kernel version and structured JSON logs.
 
 ### Suggest a feature
+
 Open a [feature request](.github/ISSUE_TEMPLATE/feature_request.yml).
 Describe the security problem you are trying to solve — not just the implementation.
 
 ### Contribute a detection rule
+
 The easiest way to contribute. Rules live in `flair-rules` (CC0 — no CLA required).
 See `flair-rules/CONTRIBUTING.md` for the rule format.
 
 ### Fix a bug or implement a feature
+
 See the [Development workflow](#development-workflow) section below.
 
 ### Improve documentation
+
 Documentation lives in `flair-docs`. Docusaurus markdown — no build step required for
 content contributions.
 
@@ -154,18 +159,21 @@ Fill in every section — especially the AC coverage table.
 
 Full standards are in `CLAUDE.md`. The key rules:
 
-**Go**
+### Go
+
 - GoDoc on all exported symbols
 - `gofmt` + `golangci-lint` must be clean
 - Explicit error handling — no `_` on returned errors
 - No global init with side effects
 
-**Angular / TypeScript**
+### Angular / TypeScript
+
 - Strict TypeScript — no `any`
 - OnPush change detection by default
 - WCAG 2.1 AA on all interactive elements
 
-**All languages**
+### All languages
+
 - Conventional Commits: `type(scope): message`
 - No `--tls-verify=false` or equivalent — ever
 - No secrets in code
@@ -177,6 +185,7 @@ Full standards are in `CLAUDE.md`. The key rules:
 ### CI must be green
 
 All CI checks must pass before a PR can be merged:
+
 1. Build
 2. Tests (unit + integration + E2E where applicable)
 3. Quality (lint + static analysis)
@@ -194,7 +203,7 @@ SonarCloud quality gate: ≥ 80% coverage on new code.
 
 If you used an AI assistant to write part of your contribution, add a co-author line:
 
-```
+```text
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 ```
 

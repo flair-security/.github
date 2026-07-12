@@ -1,0 +1,112 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'   # Monday 6am UTC
+
+permissions: read-all
+
+jobs:
+  # -----------------------------------------
+  # SECRETS — Gitleaks
+  # -----------------------------------------
+  gitleaks:
+    name: Gitleaks - Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # gitleaks/gitleaks-action now requires a paid org license (gitleaks.io) —
+      # this repo is under an org, so the Action refuses to run without
+      # GITLEAKS_LICENSE. Use the free OSS CLI directly instead: same detection
+      # engine, zero cost. Version+checksum from the gitleaks GitHub releases page.
+      - name: Install Gitleaks
+        run: |
+          curl -fsSL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+
+      - name: Gitleaks
+        run: |
+          ./gitleaks detect \
+            --source . \
+            --config .github/workflows/configuration/.gitleaks.toml \
+            --report-format sarif \
+            --report-path gitleaks-results.sarif \
+            --redact \
+            --exit-code 1
+
+      - name: Upload Gitleaks SARIF
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        if: always() && hashFiles('gitleaks-results.sarif') != ''
+        with:
+          sarif_file: gitleaks-results.sarif
+          category: gitleaks-secrets
+
+  # -----------------------------------------
+  # CI/CD COMPLIANCE — Plumber
+  # -----------------------------------------
+  plumber:
+    name: Plumber - CI/CD Compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run Plumber
+        uses: getplumber/plumber@5302ddc7d9f1c9edb3f617bff04a09be452bcfe2 # v0.3.79
+        with:
+          sarif: plumber-results.sarif
+          output: plumber-results.json
+          pbom-cyclonedx: plumber-pbom.cdx.json
+          threshold: 90
+          metadata-token: ${{ secrets.PLUMBER_METADATA_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLUMBER_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Upload Plumber SARIF
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        if: always() && hashFiles('plumber-results.sarif') != ''
+        with:
+          sarif_file: plumber-results.sarif
+          category: plumber-supply-chain
+
+      - name: Upload Plumber artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always() && hashFiles('plumber-results.json') != ''
+        with:
+          name: plumber-report
+          path: |
+            plumber-results.json
+            plumber-pbom.cdx.json
+
+      - name: Plumber Gate (compliance >= 90% required)
+        if: hashFiles('plumber-results.json') != ''
+        run: |
+          SCORE=$(jq '.compliance' plumber-results.json)
+          echo "Plumber compliance: ${SCORE}%"
+          if [ "$SCORE" -lt 90 ]; then
+            echo "::error::Plumber compliance ${SCORE}% < 90%% (security gate)"
+            exit 1
+          fi

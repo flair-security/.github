@@ -23,7 +23,7 @@ The `GraphStore` interface abstracts the implementation — callers never import
 ## Alternatives considered
 
 | Option | Pros | Cons |
-|---|---|---|
+| --- | --- | --- |
 | PostgreSQL + Neo4j | Best-in-class graph queries | Two databases to operate, two connection pools, licensing (Neo4j enterprise) |
 | PostgreSQL + AGE (chosen) | Single database, single connection pool, Cypher support, open source | AGE is less mature than Neo4j, Cypher subset only |
 | PostgreSQL only (adjacency list) | Simplest | Complex graph traversal queries, no Cypher |
