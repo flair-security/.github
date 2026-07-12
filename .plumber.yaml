@@ -20,8 +20,9 @@ github:
       trustSameOrgActions: true
       trustedGithubActions:
         - ossf/scorecard-action
-        - gitleaks/gitleaks-action
         - getplumber/plumber
+        - DavidAnson/markdownlint-cli2-action # validate.yml markdown-lint job
+        - trufflesecurity/trufflehog # validate.yml secret-scan job (belt-and-suspenders alongside Gitleaks)
 
     # --- Debug trace forbidden ---
     pipelineMustNotEnableDebugTrace:
