@@ -1,0 +1,75 @@
+version: "2.0"
+
+github:
+  controls:
+
+    # --- Supply chain: SHA pinning ---
+    actionsMustBePinnedByCommitSha:
+      enabled: true
+      trustedOwners: []
+
+    actionsMustNotBeArchived:
+      enabled: true
+
+    actionsMustNotCarryKnownCVEs:
+      enabled: true
+
+    githubActionMustComeFromAuthorizedSources:
+      enabled: true
+      trustGithubOfficialActions: true
+      trustSameOrgActions: true
+      trustedGithubActions:
+        - ossf/scorecard-action
+        - gitleaks/gitleaks-action
+        - getplumber/plumber
+
+    # --- Debug trace forbidden ---
+    pipelineMustNotEnableDebugTrace:
+      enabled: true
+      forbiddenVariables:
+        - ACTIONS_STEP_DEBUG
+        - ACTIONS_RUNNER_DEBUG
+
+    # --- Unverified script execution ---
+    pipelineMustNotExecuteUnverifiedScripts:
+      enabled: true
+      trustedUrls: []
+
+    # --- User input injected into scripts ---
+    workflowMustNotInjectUserInputInScripts:
+      enabled: true
+
+    # --- Dangerous triggers (pull_request_target etc.) ---
+    workflowMustNotUseDangerousTriggers:
+      enabled: true
+
+    # --- Explicit permissions required ---
+    workflowsMustDeclarePermissions:
+      enabled: true
+
+    # --- No write-all ---
+    workflowMustNotGrantPermissionsWriteAll:
+      enabled: true
+
+    # --- No secrets: inherit in reusable workflows ---
+    reusableWorkflowsMustNotInheritSecrets:
+      enabled: true
+
+    # --- Security jobs must not be weakened ---
+    securityJobsMustNotBeWeakened:
+      enabled: true
+      securityJobPatterns:
+        - "*gitleaks*"
+        - "*plumber*"
+        - "*scorecard*"
+        - "*security*"
+        - "*scan*"
+
+    # --- Branch protection ---
+    branchMustBeProtected:
+      enabled: true
+      defaultMustBeProtected: true
+      namePatterns:
+        - main
+      allowForcePush: false
+      codeOwnerApprovalRequired: true

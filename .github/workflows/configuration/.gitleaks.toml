@@ -1,0 +1,13 @@
+title = "FLAIR Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "FLAIR CI test paths and fixtures"
+paths = [
+    '''.*_test\.go$''',
+    '''.*\.spec\.ts$''',
+    '''.*/testdata/.*''',
+    '''.*\.example$'''
+]
