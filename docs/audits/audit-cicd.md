@@ -10,5 +10,5 @@ The CI/CD security baseline (Gitleaks, Semgrep, CodeQL where applicable, Plumber
 ## Revision history
 
 | Version | Date | Score | Key changes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | v1 | — | — | Not yet assessed |

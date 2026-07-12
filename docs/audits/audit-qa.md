@@ -10,5 +10,5 @@ No test suites exist yet (no application code to test). Candidate first pass onc
 ## Revision history
 
 | Version | Date | Score | Key changes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | v1 | — | — | Not yet assessed |

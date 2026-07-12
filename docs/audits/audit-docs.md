@@ -10,5 +10,5 @@ Documentation was largely non-functional until 2026-07-13 (markdownlint/yamllint
 ## Revision history
 
 | Version | Date | Score | Key changes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | v1 | — | — | Not yet assessed |

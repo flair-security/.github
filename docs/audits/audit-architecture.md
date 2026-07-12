@@ -10,5 +10,5 @@ Repos are pre-MVP scaffolding (CLAUDE.md, CI baseline, no business logic yet). C
 ## Revision history
 
 | Version | Date | Score | Key changes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | v1 | — | — | Not yet assessed |

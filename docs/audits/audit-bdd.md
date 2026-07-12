@@ -10,5 +10,5 @@ No PostgreSQL/Apache AGE schema or migrations exist yet in flair-core. Candidate
 ## Revision history
 
 | Version | Date | Score | Key changes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | v1 | — | — | Not yet assessed |

@@ -10,5 +10,5 @@ No FLAIR application code exists yet to audit (agents/core/UI are pre-MVP scaffo
 ## Revision history
 
 | Version | Date | Score | Key changes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | v1 | — | — | Not yet assessed |

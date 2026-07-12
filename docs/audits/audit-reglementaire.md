@@ -10,5 +10,5 @@ No data handling, retention, or auth flows implemented yet to assess against NIS
 ## Revision history
 
 | Version | Date | Score | Key changes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | v1 | — | — | Not yet assessed |
